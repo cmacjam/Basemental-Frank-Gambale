@@ -203,7 +203,6 @@ Fusion250Editor::Fusion250Editor (Fusion250Processor& p) : AudioProcessorEditor 
     };
     addAndMakeVisible (channelBtn);
 
-    reverbBtn.setClickingTogglesState (true);
     reverbBtn.setTooltip ("Reverb on/off (footswitch)");
     addAndMakeVisible (reverbBtn);
     revAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (proc.apvts, "reverb_on", reverbBtn);
@@ -285,7 +284,7 @@ void Fusion250Editor::timerCallback()
 void Fusion250Editor::rebuildTextures()
 {
     juce::Random rng (250);
-    // black brushed faceplate
+    // black crinkle faceplate
     brushed = juce::Image (juce::Image::RGB, juce::jmax (1, plate.getWidth()), juce::jmax (1, plate.getHeight()), true);
     {
         juce::Graphics g (brushed);
@@ -293,12 +292,16 @@ void Fusion250Editor::rebuildTextures()
         grad.addColour (0.45, plateHi.interpolatedWith (plateLo, 0.35f));
         g.setGradientFill (grad);
         g.fillAll();
-        for (int y = 0; y < plate.getHeight(); ++y)
+        // black crinkle (wrinkle) finish: dense tiny highlights and shadows
+        const int W = plate.getWidth(), H = plate.getHeight();
+        for (int i = 0; i < W * H / 3; ++i)
         {
-            const float a = rng.nextFloat() * 0.05f;
-            g.setColour ((rng.nextBool() ? juce::Colours::white : juce::Colours::black).withAlpha (a));
-            const float x0 = rng.nextFloat() * plate.getWidth() * 0.3f;
-            g.drawHorizontalLine (y, x0, x0 + plate.getWidth() * (0.5f + rng.nextFloat() * 0.6f));
+            const float x = rng.nextFloat() * W, y = rng.nextFloat() * H;
+            const float d = 1.0f + rng.nextFloat() * 2.2f;
+            g.setColour (juce::Colours::white.withAlpha (0.025f + rng.nextFloat() * 0.03f));
+            g.fillEllipse (x, y, d, d * 0.8f);
+            g.setColour (juce::Colours::black.withAlpha (0.10f + rng.nextFloat() * 0.10f));
+            g.fillEllipse (x + 0.8f, y + 0.9f, d, d * 0.8f);
         }
     }
     // tolex grain
@@ -359,12 +362,12 @@ void Fusion250Editor::paint (juce::Graphics& g)
     // engraved row divider
     const float divY = (float) cleanBand.getY();
     g.setColour (juce::Colours::black.withAlpha (0.8f));
-    g.drawHorizontalLine ((int) divY + 1, pf.getX() + 130 * s, pf.getX() + 818 * s);
+    g.drawHorizontalLine ((int) divY + 1, pf.getX() + 130 * s, pf.getX() + 826 * s);
     g.setColour (ink.withAlpha (0.55f));
-    g.drawHorizontalLine ((int) divY, pf.getX() + 130 * s, pf.getX() + 818 * s);
+    g.drawHorizontalLine ((int) divY, pf.getX() + 130 * s, pf.getX() + 826 * s);
     // power section: vertical divider, captions, blue ON lamp
     g.setColour (ink.withAlpha (0.55f));
-    g.drawVerticalLine ((int) (pf.getX() + 830 * s), pf.getY() + 16 * s, pf.getBottom() - 16 * s);
+    g.drawVerticalLine ((int) (pf.getX() + 836 * s), pf.getY() + 16 * s, pf.getBottom() - 16 * s);
     const auto pb = powerBtn.getBounds().toFloat();
     engrave (g, "POWER", { pb.getX() - 20 * s, pb.getY() - 22 * s, pb.getWidth() + 40 * s, 18 * s }, 14.5f * s);
     const juce::Point<float> lamp (pb.getCentreX(), (float) cleanBand.getCentreY() + 8 * s);
@@ -387,6 +390,27 @@ void Fusion250Editor::paint (juce::Graphics& g)
         if (k.small) continue;
         const auto b = k.slider->getBounds().toFloat();
         engrave (g, k.label.toUpperCase(), { b.getX() - 20 * s, b.getY() - 22 * s, b.getWidth() + 40 * s, 18 * s }, 14.5f * s);
+    }
+
+    // footer groups
+    auto group = [&] (juce::Rectangle<int> r, const char* title)
+    {
+        const auto rf = r.toFloat();
+        g.setColour (juce::Colours::black.withAlpha (0.45f));
+        g.fillRoundedRectangle (rf, 6 * s);
+        g.setColour (piping.withAlpha (0.3f));
+        g.drawRoundedRectangle (rf, 6 * s, 1.0f);
+        g.setColour (cream);
+        g.setFont (engraveFont (11 * s, true));
+        g.drawText (title, rf.withHeight (16 * s).translated (10 * s, 3 * s), juce::Justification::centredLeft);
+    };
+    group (guitarGroup, "Guitar");
+    group (speakerGroup, "Speaker");
+    group (levelGroup, "Levels");
+    // reverb footswitch caption
+    {
+        const auto rb = reverbBtn.getBounds().toFloat();
+        engrave (g, "REVERB", { rb.getX() - 20 * s, rb.getY() - 22 * s, rb.getWidth() + 40 * s, 18 * s }, 14.5f * s);
     }
 
     // footer captions (on tolex, so cream)
@@ -420,35 +444,40 @@ void Fusion250Editor::resized()
     tuner.setBounds (plate);
     channelBtn.setBounds (S (30), cleanBand.getY() - S (17), S (90), S (34));
 
-    const int x0 = S (140), colW = S (114), knobSize = S (100);
-    powerBtn.setBounds (plate.getX() + S (848), leadBand.getY() + S (40), S (62), S (82));
+    const int x0 = S (136), colW = S (115), knobSize = S (114);
+    powerBtn.setBounds (plate.getX() + S (852), leadBand.getY() + S (40), S (62), S (82));
     auto placeKnob = [&] (Knob& k, juce::Rectangle<int> band, int col)
     {
         const int cx = x0 + col * colW + colW / 2;
-        k.slider->setBounds (cx - knobSize / 2, band.getY() + S (34), knobSize, knobSize);
+        k.slider->setBounds (cx - knobSize / 2, band.getY() + S (30), knobSize, knobSize);
     };
     for (int i = 0; i < 6; ++i) placeKnob (knobs[(size_t) i], leadBand, i);
     for (int i = 0; i < 5; ++i) placeKnob (knobs[(size_t) (6 + i)], cleanBand, i);
 
     const int revCx = x0 + 5 * colW + colW / 2;
-    reverbBtn.setBounds (revCx - S (46), cleanBand.getCentreY() - S (16), S (92), S (32));
+    reverbBtn.setBounds (revCx - S (34), cleanBand.getY() + S (30), S (68), S (100));
 
-    const int fy = footer.getY() + S (26), fy2 = footer.getY() + S (62);
-    guitarBox.setBounds (S (20), fy, S (200), S (26));
-    cabBox.setBounds (S (230), fy, S (170), S (26));
-    micBox.setBounds (S (410), fy, S (130), S (26));
-    outputBox.setBounds (S (550), fy, S (170), S (26));
-    irLabel.setBounds (S (20), fy2, S (520), S (26));
-    padBtn.setBounds (S (550), fy2, S (64), S (26));
-    irBtn.setBounds (S (620), fy2, S (100), S (26));
+    // footer: three grouped panels
+    const int gy = footer.getY() + S (4), gh = footer.getHeight() - S (10);
+    guitarGroup  = { S (14), gy, S (226), gh };
+    speakerGroup = { S (248), gy, S (536), gh };
+    levelGroup   = { S (792), gy, S (154), gh };
+    const int fy = gy + S (40), fy2 = gy + S (74);
+    guitarBox.setBounds (guitarGroup.getX() + S (12), fy, S (202), S (26));
+    cabBox.setBounds (speakerGroup.getX() + S (12), fy, S (170), S (26));
+    micBox.setBounds (speakerGroup.getX() + S (192), fy, S (130), S (26));
+    outputBox.setBounds (speakerGroup.getX() + S (332), fy, S (192), S (26));
+    padBtn.setBounds (speakerGroup.getX() + S (332), fy2, S (64), S (24));
+    irBtn.setBounds (speakerGroup.getX() + S (404), fy2, S (120), S (24));
+    irLabel.setBounds (speakerGroup.getX() + S (10), fy2, S (316), S (24));
 
     auto smallKnob = [&] (Knob& k, int cx)
     {
-        const int sz = S (66);
-        k.slider->setBounds (cx - sz / 2, footer.getY() + S (24), sz, sz);
+        const int sz = S (62);
+        k.slider->setBounds (cx - sz / 2, gy + S (38), sz, sz);
     };
-    smallKnob (knobs[11], S (820));
-    smallKnob (knobs[12], S (905));
+    smallKnob (knobs[11], levelGroup.getX() + S (40));
+    smallKnob (knobs[12], levelGroup.getX() + S (114));
 }
 
 // =================================================================== rocker
@@ -480,4 +509,45 @@ void RockerSwitch::paintButton (juce::Graphics& g, bool over, bool)
     const float m = face.getWidth() * 0.12f;
     g.fillRoundedRectangle (juce::Rectangle<float> (m * 0.35f, face.getHeight() * 0.18f).withCentre (top.getCentre()), 1.0f);
     g.drawEllipse (juce::Rectangle<float> (face.getWidth() * 0.22f, face.getWidth() * 0.22f).withCentre (bottom.getCentre()), 1.6f);
+}
+
+// =============================================================== footswitch
+void FootswitchButton::paintButton (juce::Graphics& g, bool over, bool down)
+{
+    const auto b = getLocalBounds().toFloat();
+    const bool on = getToggleState();
+    // status LED above the switch
+    const juce::Point<float> led (b.getCentreX(), b.getY() + b.getHeight() * 0.12f);
+    const float lr = b.getWidth() * 0.09f;
+    if (on) { g.setColour (juce::Colour (0xffff3a2a).withAlpha (0.35f)); g.fillEllipse (led.x - lr * 2.4f, led.y - lr * 2.4f, lr * 4.8f, lr * 4.8f); }
+    g.setColour (on ? juce::Colour (0xffff4a3a) : juce::Colour (0xff3a1210));
+    g.fillEllipse (led.x - lr, led.y - lr, lr * 2, lr * 2);
+    g.setColour (juce::Colours::white.withAlpha (on ? 0.6f : 0.2f));
+    g.fillEllipse (led.x - lr * 0.5f, led.y - lr * 0.6f, lr * 0.6f, lr * 0.45f);
+
+    // hex nut + chrome stomp cap
+    const juce::Point<float> c (b.getCentreX(), b.getY() + b.getHeight() * 0.62f);
+    const float R = juce::jmin (b.getWidth(), b.getHeight()) * 0.42f;
+    juce::Path hex;
+    for (int i = 0; i < 6; ++i)
+    {
+        const float a = juce::MathConstants<float>::pi / 3.0f * (float) i;
+        const auto p = c + juce::Point<float> (R * std::cos (a), R * std::sin (a));
+        if (i == 0) hex.startNewSubPath (p); else hex.lineTo (p);
+    }
+    hex.closeSubPath();
+    g.setColour (juce::Colours::black.withAlpha (0.5f));
+    g.fillPath (hex, juce::AffineTransform::translation (0, 3.0f));
+    juce::ColourGradient nut (juce::Colour (0xffdedede), c.x - R, c.y - R, juce::Colour (0xff4a4a4a), c.x + R, c.y + R, false);
+    g.setGradientFill (nut);
+    g.fillPath (hex);
+    const float cr = R * (down ? 0.60f : 0.64f);
+    juce::ColourGradient cap (juce::Colour (0xffffffff), c.x - cr * 0.5f, c.y - cr * 0.7f, juce::Colour (0xff6a6a6a), c.x + cr * 0.6f, c.y + cr, true);
+    g.setGradientFill (cap);
+    g.fillEllipse (c.x - cr, c.y - cr, cr * 2, cr * 2);
+    g.setColour (juce::Colours::black.withAlpha (0.45f));
+    g.drawEllipse (c.x - cr, c.y - cr, cr * 2, cr * 2, 1.0f);
+    g.setColour (juce::Colours::black.withAlpha (0.18f));
+    g.drawEllipse (c.x - cr * 0.62f, c.y - cr * 0.62f, cr * 1.24f, cr * 1.24f, 1.2f);
+    if (over) { g.setColour (juce::Colours::white.withAlpha (0.08f)); g.fillEllipse (c.x - cr, c.y - cr, cr * 2, cr * 2); }
 }

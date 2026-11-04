@@ -25,6 +25,14 @@ public:
     void paintButton (juce::Graphics&, bool over, bool down) override;
 };
 
+// Chrome stomp footswitch with a status LED (click to toggle)
+class FootswitchButton : public juce::Button
+{
+public:
+    FootswitchButton() : juce::Button ("Reverb") { setClickingTogglesState (true); }
+    void paintButton (juce::Graphics&, bool over, bool down) override;
+};
+
 class Fusion250Editor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
@@ -50,7 +58,8 @@ private:
     };
     std::vector<Knob> knobs;     // 0-4 lead, 5 reverb, 6-10 clean, 11 input, 12 master
 
-    juce::TextButton channelBtn { "CH" }, reverbBtn { "REVERB" }, padBtn { "-6 dB" }, irBtn { "Load IR..." }, tunerBtn { "TUNER" };
+    juce::TextButton channelBtn { "CH" }, padBtn { "-6 dB" }, irBtn { "Load IR..." }, tunerBtn { "TUNER" };
+    FootswitchButton reverbBtn;
     TunerPanel tuner;
     RockerSwitch powerBtn;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> powerAtt;
@@ -60,7 +69,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> guitarAtt, outputAtt, cabAtt, micAtt;
     std::unique_ptr<juce::FileChooser> chooser;
 
-    juce::Rectangle<int> header, plate, leadBand, cleanBand, footer;
+    juce::Rectangle<int> header, plate, leadBand, cleanBand, footer, guitarGroup, speakerGroup, levelGroup;
     juce::Image brushed, tolex;
     bool leadOn = false;
 
