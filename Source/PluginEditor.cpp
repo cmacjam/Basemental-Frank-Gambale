@@ -7,10 +7,10 @@ namespace
     const juce::Colour oxblood   { 0xff151515 };   // black tolex
     const juce::Colour oxblood2  { 0xff0a0a0a };
     const juce::Colour piping    { 0xffc9cdd1 };   // silver trim
-    const juce::Colour plateHi   { 0xff2c2c2c };   // black brushed faceplate
-    const juce::Colour plateLo   { 0xff111111 };
+    const juce::Colour plateHi   { 0xffe4e7ea };   // brushed silver faceplate
+    const juce::Colour plateLo   { 0xffa7acb1 };
     const juce::Colour greyText  { 0xff3a3d40 };
-    const juce::Colour ink       { 0xffdadde0 };   // silver lettering   // lettering: white on black
+    const juce::Colour ink       { 0xff16181a };   // dark engraving on silver   // lettering: white on black
     const juce::Colour cream     { 0xffe2e5e8 };
     const juce::Colour blueLamp  { 0xff3d8bff };
 
@@ -26,7 +26,7 @@ namespace
                   juce::Justification j = juce::Justification::centred, bool italic = false)
     {
         g.setFont (engraveFont (size, italic));
-        g.setColour (juce::Colours::black.withAlpha (0.8f));
+        g.setColour (juce::Colours::white.withAlpha (0.65f));
         g.drawText (t, r.translated (0.0f, 1.0f), j);
         g.setColour (ink);
         g.drawText (t, r, j);
@@ -85,7 +85,7 @@ void AmpLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, i
             g.setColour (col);
             g.drawLine (c.x + r0 * std::sin (a), c.y - r0 * std::cos (a) + off, c.x + r1 * std::sin (a), c.y - r1 * std::cos (a) + off, th);
         };
-        line (1.0f, Colours::black.withAlpha (0.7f), 1.4f);
+        line (1.0f, Colours::white.withAlpha (0.6f), 1.4f);
         line (0.0f, ink, i % 5 == 0 ? 1.8f : 1.2f);
         if (! small && i % 2 == 0)
         {
@@ -100,10 +100,10 @@ void AmpLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, i
     const float kr = r * 0.56f;
     g.setColour (Colours::black.withAlpha (0.45f));
     g.fillEllipse (c.x - kr + 1.5f, c.y - kr + 3.5f, kr * 2, kr * 2);
-    ColourGradient skirt (Colour (0xffd9dcdf), c.x - kr, c.y - kr, Colour (0xff55595d), c.x + kr, c.y + kr, false);
+    ColourGradient skirt (Colour (0xff3a3c3f), c.x - kr, c.y - kr, Colour (0xff050506), c.x + kr, c.y + kr, false);
     g.setGradientFill (skirt);
     g.fillEllipse (c.x - kr, c.y - kr, kr * 2, kr * 2);
-    g.setColour (Colours::black.withAlpha (0.35f));
+    g.setColour (Colours::white.withAlpha (0.10f));
     for (int i = 0; i < 60; ++i)   // knurling
     {
         const float a = (float) i * MathConstants<float>::twoPi / 60.0f;
@@ -282,7 +282,7 @@ void Fusion250Editor::timerCallback()
 void Fusion250Editor::rebuildTextures()
 {
     juce::Random rng (250);
-    // black crinkle faceplate
+    // brushed silver faceplate
     brushed = juce::Image (juce::Image::RGB, juce::jmax (1, plate.getWidth()), juce::jmax (1, plate.getHeight()), true);
     {
         juce::Graphics g (brushed);
@@ -290,17 +290,15 @@ void Fusion250Editor::rebuildTextures()
         grad.addColour (0.45, plateHi.interpolatedWith (plateLo, 0.35f));
         g.setGradientFill (grad);
         g.fillAll();
-        // black crinkle (wrinkle) finish: dense tiny highlights and shadows
+        // brushed aluminium: fine horizontal grain
         const int W = plate.getWidth(), H = plate.getHeight();
-        for (int i = 0; i < W * H / 3; ++i)
-        {
-            const float x = rng.nextFloat() * W, y = rng.nextFloat() * H;
-            const float d = 1.0f + rng.nextFloat() * 2.2f;
-            g.setColour (juce::Colours::white.withAlpha (0.025f + rng.nextFloat() * 0.03f));
-            g.fillEllipse (x, y, d, d * 0.8f);
-            g.setColour (juce::Colours::black.withAlpha (0.10f + rng.nextFloat() * 0.10f));
-            g.fillEllipse (x + 0.8f, y + 0.9f, d, d * 0.8f);
-        }
+        for (int y = 0; y < H; ++y)
+            for (int k = 0; k < 3; ++k)
+            {
+                g.setColour ((rng.nextBool() ? juce::Colours::white : juce::Colours::black).withAlpha (rng.nextFloat() * 0.07f));
+                const float x0 = rng.nextFloat() * W * 0.6f;
+                g.drawHorizontalLine (y, x0, x0 + W * (0.2f + rng.nextFloat() * 0.6f));
+            }
     }
     // tolex grain
     tolex = juce::Image (juce::Image::RGB, juce::jmax (1, getWidth()), juce::jmax (1, getHeight()), true);
@@ -324,8 +322,8 @@ void Fusion250Editor::paint (juce::Graphics& g)
     // nameplate
     auto np = juce::Rectangle<float> (16 * s, 9 * s, 340 * s, 34 * s);
     {   // brushed-aluminium badge
-        juce::ColourGradient al (juce::Colour (0xffeceff2), np.getX(), np.getY(), juce::Colour (0xff9ea3a8), np.getX(), np.getBottom(), false);
-        al.addColour (0.5, juce::Colour (0xffcfd3d7));
+        juce::ColourGradient al (juce::Colour (0xff8d9297), np.getX(), np.getY(), juce::Colour (0xff4a4e52), np.getX(), np.getBottom(), false);
+        al.addColour (0.5, juce::Colour (0xff6c7176));
         g.setGradientFill (al);
         g.fillRoundedRectangle (np, 5 * s);
         juce::Random rr (7);
@@ -340,12 +338,12 @@ void Fusion250Editor::paint (juce::Graphics& g)
     g.setColour (juce::Colours::black.withAlpha (0.6f));
     g.drawRoundedRectangle (np.reduced (2.5f * s), 4 * s, 1.2f * s);
     g.setFont (engraveFont (24 * s, true));
-    g.setColour (juce::Colours::white.withAlpha (0.6f));
+    g.setColour (juce::Colours::white.withAlpha (0.35f));
     g.drawText ("Basemental FG 250", np.withTrimmedLeft (12 * s).translated (0, 1.0f), juce::Justification::centredLeft);
-    g.setColour (juce::Colour (0xff1a1c1e));
+    g.setColour (juce::Colour (0xff0c0d0e));
     g.drawText ("Basemental FG 250", np.withTrimmedLeft (12 * s), juce::Justification::centredLeft);
     g.setFont (juce::Font (juce::FontOptions (serif(), 10.5f * s, juce::Font::bold)));
-    g.setColour (greyText);
+    g.setColour (juce::Colour (0xff141516));
     g.drawText ("TWO CHANNEL", np.withTrimmedRight (12 * s).withTrimmedTop (2 * s), juce::Justification::centredRight);
 
     // piping around the plate, then the brushed plate itself
@@ -373,7 +371,7 @@ void Fusion250Editor::paint (juce::Graphics& g)
 
     // engraved row divider
     const float divY = (float) cleanBand.getY();
-    g.setColour (juce::Colours::black.withAlpha (0.8f));
+    g.setColour (juce::Colours::white.withAlpha (0.7f));
     g.drawHorizontalLine ((int) divY + 1, pf.getX() + 130 * s, pf.getX() + 826 * s);
     g.setColour (ink.withAlpha (0.55f));
     g.drawHorizontalLine ((int) divY, pf.getX() + 130 * s, pf.getX() + 826 * s);
