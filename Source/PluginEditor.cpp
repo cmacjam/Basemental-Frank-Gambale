@@ -254,12 +254,16 @@ Fusion250Editor::Fusion250Editor (Fusion250Processor& p) : AudioProcessorEditor 
     powerBtn.setTooltip ("Power: off silences the amp (the tuner keeps working)");
     powerBtn.onStateChange = [this] { repaint(); };
     addAndMakeVisible (powerBtn);
+    addAndMakeVisible (inMeter);
+    addAndMakeVisible (outMeter);
+    inMeter.setTooltip ("Input level (after the Input knob). Click to reset the clip light");
+    outMeter.setTooltip ("Output level. Click to reset the clip light");
     powerAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (proc.apvts, "power", powerBtn);
 
     setResizable (true, true);
     if (auto* c = getConstrainer()) { c->setFixedAspectRatio ((double) kW / kH); c->setSizeLimits (kW * 2 / 3, kH * 2 / 3, kW * 2, kH * 2); }
     setSize (kW, kH);
-    startTimerHz (20);
+    startTimerHz (30);
     timerCallback();
 }
 
@@ -272,6 +276,8 @@ Fusion250Editor::~Fusion250Editor()
 
 void Fusion250Editor::timerCallback()
 {
+    inMeter.push (proc.takeInputPeak(), 1.0 / 30.0);
+    outMeter.push (proc.takeOutputPeak(), 1.0 / 30.0);
     const bool lead = proc.apvts.getRawParameterValue ("channel")->load() > 0.5f;
     if (lead != leadOn) { leadOn = lead; repaint(); }
     channelBtn.setButtonText (leadOn ? "LEAD" : "CLEAN");
@@ -470,24 +476,26 @@ void Fusion250Editor::resized()
     // footer: three grouped panels
     const int gy = footer.getY() + S (4), gh = footer.getHeight() - S (10);
     guitarGroup  = { S (14), gy, S (226), gh };
-    speakerGroup = { S (248), gy, S (536), gh };
-    levelGroup   = { S (792), gy, S (154), gh };
+    speakerGroup = { S (248), gy, S (478), gh };
+    levelGroup   = { S (734), gy, S (212), gh };
     const int fy = gy + S (40), fy2 = gy + S (74);
     guitarBox.setBounds (guitarGroup.getX() + S (12), fy, S (202), S (26));
-    cabBox.setBounds (speakerGroup.getX() + S (12), fy, S (170), S (26));
-    micBox.setBounds (speakerGroup.getX() + S (192), fy, S (130), S (26));
-    outputBox.setBounds (speakerGroup.getX() + S (332), fy, S (192), S (26));
-    padBtn.setBounds (speakerGroup.getX() + S (332), fy2, S (64), S (24));
-    irBtn.setBounds (speakerGroup.getX() + S (404), fy2, S (120), S (24));
-    irLabel.setBounds (speakerGroup.getX() + S (10), fy2, S (316), S (24));
+    cabBox.setBounds (speakerGroup.getX() + S (12), fy, S (150), S (26));
+    micBox.setBounds (speakerGroup.getX() + S (170), fy, S (118), S (26));
+    outputBox.setBounds (speakerGroup.getX() + S (296), fy, S (170), S (26));
+    padBtn.setBounds (speakerGroup.getX() + S (296), fy2, S (58), S (24));
+    irBtn.setBounds (speakerGroup.getX() + S (360), fy2, S (106), S (24));
+    irLabel.setBounds (speakerGroup.getX() + S (10), fy2, S (280), S (24));
+    inMeter.setBounds (levelGroup.getX() + S (152), gy + S (8), S (24), gh - S (14));
+    outMeter.setBounds (levelGroup.getX() + S (180), gy + S (8), S (24), gh - S (14));
 
     auto smallKnob = [&] (Knob& k, int cx)
     {
         const int sz = S (62);
         k.slider->setBounds (cx - sz / 2, gy + S (38), sz, sz);
     };
-    smallKnob (knobs[11], levelGroup.getX() + S (40));
-    smallKnob (knobs[12], levelGroup.getX() + S (114));
+    smallKnob (knobs[11], levelGroup.getX() + S (38));
+    smallKnob (knobs[12], levelGroup.getX() + S (106));
 }
 
 // =================================================================== rocker
@@ -560,4 +568,46 @@ void FootswitchButton::paintButton (juce::Graphics& g, bool over, bool down)
     g.setColour (juce::Colours::black.withAlpha (0.18f));
     g.drawEllipse (c.x - cr * 0.62f, c.y - cr * 0.62f, cr * 1.24f, cr * 1.24f, 1.2f);
     if (over) { g.setColour (juce::Colours::white.withAlpha (0.08f)); g.fillEllipse (c.x - cr, c.y - cr, cr * 2, cr * 2); }
+}
+
+// ================================================================== meters
+void LevelMeter::push (float peak, double dt)
+{
+    const float db = juce::Decibels::gainToDecibels (peak, -100.0f);
+    levelDb = db > levelDb ? db : juce::jmax (db, levelDb - (float) (dt * 26.0));   // ~26 dB/s fall
+    if (db >= holdDb) { holdDb = db; holdAge = 0; }
+    else if ((holdAge += dt) > 1.5) holdDb = juce::jmax (levelDb, holdDb - (float) (dt * 40.0));
+    if (db >= -0.1f) clipped = true;
+    repaint();
+}
+
+void LevelMeter::paint (juce::Graphics& g)
+{
+    auto r = getLocalBounds().toFloat();
+    const float labelH = 12.0f, clipH = 7.0f;
+    auto clip = r.removeFromTop (clipH).reduced (2.0f, 0.5f);
+    g.setColour (clipped ? juce::Colour (0xffff3a2a) : juce::Colour (0xff3a1210));
+    g.fillRoundedRectangle (clip, 2.0f);
+    auto lab = r.removeFromBottom (labelH);
+    g.setColour (juce::Colour (0xffe2e5e8).withAlpha (0.8f));
+    g.setFont (juce::FontOptions (juce::Font::getDefaultSerifFontName(), 9.5f, juce::Font::bold));
+    g.drawText (label, lab, juce::Justification::centred);
+
+    auto bar = r.reduced (3.0f, 2.0f);
+    g.setColour (juce::Colours::black);
+    g.fillRoundedRectangle (bar.expanded (1.5f), 2.0f);
+    const int segs = 21;
+    const float gap = 1.0f, sh = (bar.getHeight() - gap * (segs - 1)) / segs;
+    auto toFrac = [] (float db) { return juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 63.0f); };   // -60..+3 dB
+    for (int i = 0; i < segs; ++i)
+    {
+        const float lo = (float) i / segs;                     // segment from the bottom
+        const float segDb = lo * 63.0f - 60.0f;
+        const juce::Colour col = segDb >= -3.0f ? juce::Colour (0xffff3a2a) : segDb >= -12.0f ? juce::Colour (0xffffc23a) : juce::Colour (0xff4cff5a);
+        const bool lit = toFrac (levelDb) > lo;
+        const bool hold = std::abs (toFrac (holdDb) - lo) < 0.5f / segs && holdDb > -60.0f;
+        const auto seg = juce::Rectangle<float> (bar.getX(), bar.getBottom() - (i + 1) * sh - i * gap, bar.getWidth(), sh);
+        g.setColour (lit || hold ? col : col.darker (3.0f).withAlpha (0.6f));
+        g.fillRect (seg);
+    }
 }

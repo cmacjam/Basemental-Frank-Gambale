@@ -58,6 +58,17 @@ private:
     juce::AudioBuffer<float> monoIn, stereoTmp;
     int currentPreset = 0;
     float powerGain = 1.0f;
+public:
+    // level meters: peak since the GUI last read (linear)
+    float takeInputPeak()  { return inPeak.exchange (0.0f); }
+    float takeOutputPeak() { return outPeak.exchange (0.0f); }
+private:
+    std::atomic<float> inPeak { 0.0f }, outPeak { 0.0f };
+    static void atomicMax (std::atomic<float>& a, float v)
+    {
+        float cur = a.load (std::memory_order_relaxed);
+        while (v > cur && ! a.compare_exchange_weak (cur, v, std::memory_order_relaxed)) {}
+    }
 
     fusion::SampleRing tunerRing { 18 };
     std::atomic<bool> tunerOpen { false };

@@ -29,6 +29,15 @@ int main (int argc, char** argv)
     proc->setCurrentProgram (5);
 
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
+    {   // play a note so the level meters show something
+        juce::AudioBuffer<float> b (2, 512); juce::MidiBuffer mb; double ph0 = 0;
+        for (int blk = 0; blk < 12; ++blk)
+        {
+            for (int i = 0; i < 512; ++i) { const float v = 0.4f * (float) std::sin (ph0); ph0 += 2 * juce::MathConstants<double>::pi * 110.0 / fs; b.setSample (0, i, v); b.setSample (1, i, v); }
+            proc->processBlock (b, mb);
+            if (blk % 3 == 2) { std::this_thread::sleep_for (std::chrono::milliseconds (35)); juce::Timer::callPendingTimersSynchronously(); }
+        }
+    }
     snapshot (*ed, outDir.getChildFile ("amp.png"));
     {   // high-resolution front plate (2x)
         const int w = ed->getWidth(), h = ed->getHeight();

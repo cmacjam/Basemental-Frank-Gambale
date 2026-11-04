@@ -33,6 +33,21 @@ public:
     void paintButton (juce::Graphics&, bool over, bool down) override;
 };
 
+// LED-style peak meter: -60..+3 dBFS, peak hold, latching clip light (click to reset)
+class LevelMeter : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    explicit LevelMeter (juce::String l) : label (std::move (l)) {}
+    void push (float peakLinear, double dt);
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override { clipped = false; repaint(); }
+private:
+    juce::String label;
+    float levelDb = -100, holdDb = -100;
+    double holdAge = 0;
+    bool clipped = false;
+};
+
 class Fusion250Editor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
@@ -62,6 +77,7 @@ private:
     FootswitchButton reverbBtn;
     TunerPanel tuner;
     RockerSwitch powerBtn;
+    LevelMeter inMeter { "IN" }, outMeter { "OUT" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> powerAtt;
     juce::ComboBox guitarBox, outputBox, presetBox, cabBox, micBox;
     juce::Label irLabel;

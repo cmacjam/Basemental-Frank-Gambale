@@ -234,6 +234,10 @@ void Fusion250Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         if (numIn > 1) { juce::FloatVectorOperations::add (m, buffer.getReadPointer (1), n); juce::FloatVectorOperations::multiply (m, 0.5f, n); }
     }
 
+    // input meter: what reaches the amp (after the Input trim)
+    atomicMax (inPeak, juce::FloatVectorOperations::findMaximum (m, n) * juce::Decibels::decibelsToGain (p.inDb));
+    atomicMax (inPeak, -juce::FloatVectorOperations::findMinimum (m, n) * juce::Decibels::decibelsToGain (p.inDb));
+
     // tuner taps the raw input, ahead of the amp (like a pedal at the front)
     const bool tuning = tunerOpen.load (std::memory_order_relaxed);
     if (tuning) tunerRing.push (m, n);
@@ -269,6 +273,7 @@ void Fusion250Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     powerGain = powerTarget;
 
     if (tuning && v (ID::tunerMute) > 0.5f) buffer.clear();
+    for (int c = 0; c < numOut; ++c) atomicMax (outPeak, buffer.getMagnitude (c, 0, n));
 }
 
 bool Fusion250Processor::loadImpulseResponse (const juce::File& file)
