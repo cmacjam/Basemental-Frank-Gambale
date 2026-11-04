@@ -1,0 +1,214 @@
+desc: Fusion 250 - Two-Channel Fusion Amp
+//tags: guitar amp amplifier distortion reverb
+//author: Fusion Audio
+//version: 1.0
+//
+// Signal chain follows the FG Little 250 Amplitude manual's block diagram:
+//   Input -> CLEAN (Gain > Tones > Level) / LEAD (Gain > Tones > Level)
+//         -> Reverb -> [Pre Out] -> Class-D power stage -> Cab -> Out
+// Voicing constants are estimates (DV Mark publishes no EQ or clipping data).
+// Same DSP as the VST3/AU/LV2 build (Source/AmpCore.h).
+
+slider1:channel=0<0,1,1{Clean,Lead}>Channel
+slider2:c_gain=4<0,10,0.01>Clean Gain
+slider3:c_low=5<0,10,0.01>Clean Low
+slider4:c_mid=5<0,10,0.01>Clean Mid
+slider5:c_high=5<0,10,0.01>Clean High
+slider6:c_level=5<0,10,0.01>Clean Level
+slider7:l_gain=6<0,10,0.01>Lead Gain
+slider8:l_low=4.5<0,10,0.01>Lead Low
+slider9:l_mid=6.5<0,10,0.01>Lead Mid
+slider10:l_high=5<0,10,0.01>Lead High
+slider11:l_level=5<0,10,0.01>Lead Level
+slider12:reverb=2.5<0,10,0.01>Reverb
+slider13:rev_on=1<0,1,1{Off,On}>Reverb (footswitch)
+slider14:guitar=0<0,3,1{Off (your guitar),FG1 Neck,FG1 Bridge,FG2}>Guitar Voice
+slider15:outmode=1<0,2,1{Pre Out (no cab),Built-in Cab,Power only (add ReaVerb IR after)}>Output
+slider16:pad=0<0,1,1{0 dB,-6 dB}>Pre Out Pad
+slider17:in_db=0<-12,12,0.1>Input Trim (dB)
+slider18:out_db=0<-24,12,0.1>Output (dB)
+
+in_pin:left
+in_pin:right
+out_pin:left
+out_pin:right
+
+@init
+ext_tail_size = srate * 3;
+OSF = 4;
+fo = srate * OSF;
+
+function db2lin(db) ( 10 ^ (db / 20) );
+function tanhx(x) local(e) ( x = max(min(x, 20), -20); e = exp(2 * x); (e - 1) / (e + 1); );
+function softsat(x) ( x / sqrt(sqrt(1 + x*x*x*x)); );
+function asymclip(x, b) ( tanhx(x + b) - tanhx(b); );
+
+// ---------------- biquad (RBJ)
+// note: EEL2 names are case-insensitive, so coefficient args use p0..p5
+function bq_set(p0,p1,p2,p3,p4,p5) instance(b0,b1,b2,a1,a2) ( b0=p0/p3; b1=p1/p3; b2=p2/p3; a1=p4/p3; a2=p5/p3; );
+function bq_id() ( this.bq_set(1,0,0,1,0,0); );
+function bq_reset() instance(z1,z2) ( z1 = z2 = 0; );
+function bq(x) instance(b0,b1,b2,a1,a2,z1,z2) local(y) ( y = b0*x + z1; z1 = b1*x - a1*y + z2; z2 = b2*x - a2*y; y; );
+function bq_lp(fs,f,q) local(w,c,al) ( f=min(max(f,5),fs*0.49); w=2*$pi*f/fs; c=cos(w); al=sin(w)/(2*q);
+  this.bq_set((1-c)/2, 1-c, (1-c)/2, 1+al, -2*c, 1-al); );
+function bq_hp(fs,f,q) local(w,c,al) ( f=min(max(f,5),fs*0.49); w=2*$pi*f/fs; c=cos(w); al=sin(w)/(2*q);
+  this.bq_set((1+c)/2, -(1+c), (1+c)/2, 1+al, -2*c, 1-al); );
+function bq_pk(fs,f,q,db) local(A,w,c,al) ( f=min(max(f,5),fs*0.49); A=10^(db/40); w=2*$pi*f/fs; c=cos(w); al=sin(w)/(2*q);
+  this.bq_set(1+al*A, -2*c, 1-al*A, 1+al/A, -2*c, 1-al/A); );
+function bq_ls(fs,f,db,q) local(A,w,c,al,sq) ( f=min(max(f,5),fs*0.49); A=10^(db/40); w=2*$pi*f/fs; c=cos(w); al=sin(w)/(2*q); sq=2*sqrt(A)*al;
+  this.bq_set(A*((A+1)-(A-1)*c+sq), 2*A*((A-1)-(A+1)*c), A*((A+1)-(A-1)*c-sq), (A+1)+(A-1)*c+sq, -2*((A-1)+(A+1)*c), (A+1)+(A-1)*c-sq); );
+function bq_hs(fs,f,db,q) local(A,w,c,al,sq) ( f=min(max(f,5),fs*0.49); A=10^(db/40); w=2*$pi*f/fs; c=cos(w); al=sin(w)/(2*q); sq=2*sqrt(A)*al;
+  this.bq_set(A*((A+1)+(A-1)*c+sq), -2*A*((A-1)+(A+1)*c), A*((A+1)+(A-1)*c-sq), (A+1)-(A-1)*c+sq, 2*((A-1)-(A+1)*c), (A+1)-(A-1)*c-sq); );
+
+// ---------------- smoother
+function sm_prep(ms) instance(coef) ( coef = exp(-1 / (srate * ms * 0.001)); );
+function sm_snap(v) instance(cur,target) ( cur = target = v; );
+function sm_next() instance(cur,target,coef) ( cur = target + coef * (cur - target); );
+
+// ---------------- reverb comb / allpass
+function comb_init(base, len) instance(buf,size,idx,store) ( buf = base; size = max(8, floor(len)); idx = 0; store = 0; memset(buf, 0, size); base + size; );
+function comb(in) instance(buf,size,idx,store) local(o) ( o = buf[idx]; store = o*(1 - rv_damp) + store*rv_damp; buf[idx] = in + store*rv_fb; (idx += 1) >= size ? idx = 0; o; );
+function ap_init(base, len) instance(buf,size,idx) ( buf = base; size = max(8, floor(len)); idx = 0; memset(buf, 0, size); base + size; );
+function ap(in) instance(buf,size,idx) local(b) ( b = buf[idx]; buf[idx] = in + b*0.5; (idx += 1) >= size ? idx = 0; b - in; );
+
+function level_gain(k) local(g) ( k <= 0.02 ? 0 : ( g = db2lin(-22 + 3.6*k); k < 0.5 ? g*(k/0.5) : g; ); );
+
+// ---------------- static filters
+// oversampler: 8th-order Butterworth as 4 biquads (cutoff 0.45*fs)
+q1 = 0.50979558; q2 = 0.60134489; q3 = 0.89997622; q4 = 2.56291545;
+fc = min(srate * 0.45, 20000);
+cu1.bq_lp(fo,fc,q1); cu2.bq_lp(fo,fc,q2); cu3.bq_lp(fo,fc,q3); cu4.bq_lp(fo,fc,q4);
+cd1.bq_lp(fo,fc,q1); cd2.bq_lp(fo,fc,q2); cd3.bq_lp(fo,fc,q3); cd4.bq_lp(fo,fc,q4);
+lu1.bq_lp(fo,fc,q1); lu2.bq_lp(fo,fc,q2); lu3.bq_lp(fo,fc,q3); lu4.bq_lp(fo,fc,q4);
+ld1.bq_lp(fo,fc,q1); ld2.bq_lp(fo,fc,q2); ld3.bq_lp(fo,fc,q3); ld4.bq_lp(fo,fc,q4);
+
+// clean voicing
+c_hp.bq_hp(srate, 40, 0.707);
+c_glass.bq_pk(srate, 3200, 1.0, 1.5);
+// lead "Amplitude" pre-shaping (estimate)
+l_hp.bq_hp(srate, 110, 0.707);
+l_premid.bq_pk(srate, 850, 0.8, 5);
+l_prehi.bq_hs(srate, 3000, -4, 0.7);
+l_ihp.bq_hp(fo, 90, 0.6);
+l_ilp.bq_lp(fo, 7000, 0.7);
+l_dc.bq_hp(srate, 20, 0.707);
+l_post1.bq_lp(srate, 5800, 0.6);
+l_post2.bq_lp(srate, 9500, 0.707);
+
+// cab sim (both sides)
+cabL1.bq_hp(srate,75,0.9);   cabR1.bq_hp(srate,75,0.9);
+cabL2.bq_pk(srate,110,1.2,4); cabR2.bq_pk(srate,110,1.2,4);
+cabL3.bq_pk(srate,450,1,-2.5); cabR3.bq_pk(srate,450,1,-2.5);
+cabL4.bq_pk(srate,2400,1.4,3); cabR4.bq_pk(srate,2400,1.4,3);
+cabL5.bq_lp(srate,5200,0.7); cabR5.bq_lp(srate,5200,0.7);
+cabL6.bq_lp(srate,6500,0.55); cabR6.bq_lp(srate,6500,0.55);
+
+// reverb
+rv_fb = 0.83; rv_damp = 0.35;
+rv_hp.bq_hp(srate, 150, 0.707); rv_lp.bq_lp(srate, 5000, 0.707);
+sc = srate / 44100;
+m = 0;
+m = cL1.comb_init(m, 1116*sc); m = cL2.comb_init(m, 1188*sc); m = cL3.comb_init(m, 1277*sc); m = cL4.comb_init(m, 1356*sc);
+m = cL5.comb_init(m, 1422*sc); m = cL6.comb_init(m, 1491*sc); m = cL7.comb_init(m, 1557*sc); m = cL8.comb_init(m, 1617*sc);
+m = aL1.ap_init(m, 556*sc); m = aL2.ap_init(m, 441*sc); m = aL3.ap_init(m, 341*sc); m = aL4.ap_init(m, 225*sc);
+m = cR1.comb_init(m, 1139*sc); m = cR2.comb_init(m, 1211*sc); m = cR3.comb_init(m, 1300*sc); m = cR4.comb_init(m, 1379*sc);
+m = cR5.comb_init(m, 1445*sc); m = cR6.comb_init(m, 1514*sc); m = cR7.comb_init(m, 1580*sc); m = cR8.comb_init(m, 1640*sc);
+m = aR1.ap_init(m, 579*sc); m = aR2.ap_init(m, 464*sc); m = aR3.ap_init(m, 364*sc); m = aR4.ap_init(m, 248*sc);
+
+cg.sm_prep(20); cl.sm_prep(20); lg1.sm_prep(25); lg2.sm_prep(25); ll.sm_prep(20);
+xf.sm_prep(15); wet.sm_prep(30); og.sm_prep(20); ig.sm_prep(20);
+first = 1;
+
+@slider
+// clean tones: low 110 / mid 750 / high 3200
+c_tl.bq_ls(srate, 110, (c_low-5)*3, 0.6);
+c_tm.bq_pk(srate, 750, 0.7, (c_mid-5)*2.4);
+c_th.bq_hs(srate, 3200, (c_high-5)*3, 0.6);
+// lead tones: low 100 / mid 800 / high 2800
+l_tl.bq_ls(srate, 100, (l_low-5)*3, 0.6);
+l_tm.bq_pk(srate, 800, 0.7, (l_mid-5)*2.4);
+l_th.bq_hs(srate, 2800, (l_high-5)*3, 0.6);
+
+// guitar voice
+gv1.bq_id(); gv2.bq_id(); gv3.bq_id();
+guitar == 1 ? ( gv1.bq_pk(srate,220,0.8,2); gv2.bq_pk(srate,2300,1.8,1.5); gv3.bq_hs(srate,3500,-3,0.707); );
+guitar == 2 ? ( gv1.bq_ls(srate,150,-1.5,0.707); gv2.bq_pk(srate,3200,1.8,2.5); gv3.bq_hs(srate,6000,1,0.707); );
+guitar == 3 ? ( gv1.bq_ls(srate,120,-2,0.707); gv2.bq_pk(srate,4000,2,3); gv3.bq_hs(srate,5000,1.5,0.707); );
+
+cg_t = db2lin(-6 + 2.4*c_gain);
+cl_t = level_gain(c_level);
+ldb = 12 + 4.3*l_gain;
+lg1_t = db2lin(ldb*0.55); lg2_t = db2lin(ldb*0.45);
+ll_t = level_gain(l_level) * 0.19;
+wet_t = rev_on ? ((reverb/10)^1.5) * 0.9 : 0;
+og_t = db2lin(out_db) * ((outmode == 0 && pad) ? 0.5 : 1);
+xf_t = channel ? 1 : 0;
+ig_t = db2lin(in_db);
+
+first ? (
+  cg.sm_snap(cg_t); cl.sm_snap(cl_t); lg1.sm_snap(lg1_t); lg2.sm_snap(lg2_t); ll.sm_snap(ll_t);
+  wet.sm_snap(wet_t); og.sm_snap(og_t); xf.sm_snap(xf_t); ig.sm_snap(ig_t); first = 0;
+) : (
+  cg.target = cg_t; cl.target = cl_t; lg1.target = lg1_t; lg2.target = lg2_t; ll.target = ll_t;
+  wet.target = wet_t; og.target = og_t; xf.target = xf_t; ig.target = ig_t;
+);
+
+@sample
+x = (spl0 + spl1) * 0.5 * ig.sm_next();
+guitar > 0 ? x = gv3.bq(gv2.bq(gv1.bq(x)));
+mix = xf.sm_next();
+
+// ---- CLEAN: Gain -> Tones -> Level
+g = cg.sm_next();
+s0 = c_hp.bq(x);
+k = 0;
+loop(OSF,
+  s = (k == 0) ? s0 * OSF : 0;
+  s = cu4.bq(cu3.bq(cu2.bq(cu1.bq(s))));
+  s = softsat(s * g);
+  s = cd4.bq(cd3.bq(cd2.bq(cd1.bq(s))));
+  k += 1;
+);
+yc = c_th.bq(c_tm.bq(c_tl.bq(c_glass.bq(s)))) * cl.sm_next();
+
+// ---- LEAD: Gain -> Tones -> Level
+a = lg1.sm_next(); b = lg2.sm_next();
+s0 = l_prehi.bq(l_premid.bq(l_hp.bq(x)));
+k = 0;
+loop(OSF,
+  s = (k == 0) ? s0 * OSF : 0;
+  s = lu4.bq(lu3.bq(lu2.bq(lu1.bq(s))));
+  s = asymclip(s * a, 0.25);
+  s = l_ilp.bq(l_ihp.bq(s));
+  s = softsat(tanhx(s * b));
+  s = ld4.bq(ld3.bq(ld2.bq(ld1.bq(s))));
+  k += 1;
+);
+yl = l_post2.bq(l_post1.bq(l_dc.bq(s)));
+yl = l_th.bq(l_tm.bq(l_tl.bq(yl))) * ll.sm_next();
+
+m0 = yc * (1 - mix) + yl * mix;
+
+// ---- shared reverb
+rin = rv_lp.bq(rv_hp.bq(m0)) * 0.015;
+rl = cL1.comb(rin)+cL2.comb(rin)+cL3.comb(rin)+cL4.comb(rin)+cL5.comb(rin)+cL6.comb(rin)+cL7.comb(rin)+cL8.comb(rin);
+rl = aL4.ap(aL3.ap(aL2.ap(aL1.ap(rl))));
+rr = cR1.comb(rin)+cR2.comb(rin)+cR3.comb(rin)+cR4.comb(rin)+cR5.comb(rin)+cR6.comb(rin)+cR7.comb(rin)+cR8.comb(rin);
+rr = aR4.ap(aR3.ap(aR2.ap(aR1.ap(rr))));
+w = wet.sm_next();
+L = m0 + rl * w;
+R = m0 + rr * w;
+
+// ---- power stage (Class-D: clean, soft limit) + cab
+outmode > 0 ? (
+  L = softsat(L * 0.8) / 0.8;
+  R = softsat(R * 0.8) / 0.8;
+  outmode == 1 ? (
+    L = cabL6.bq(cabL5.bq(cabL4.bq(cabL3.bq(cabL2.bq(cabL1.bq(L)))))) * 0.9;
+    R = cabR6.bq(cabR5.bq(cabR4.bq(cabR3.bq(cabR2.bq(cabR1.bq(R)))))) * 0.9;
+  );
+);
+
+o = og.sm_next();
+spl0 = L * o;
+spl1 = R * o;
