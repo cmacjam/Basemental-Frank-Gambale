@@ -1,0 +1,74 @@
+name: Build Fusion 250
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-14
+            cmake_extra: -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          - name: Windows
+            os: windows-2022
+            cmake_extra: ""
+          - name: Linux
+            os: ubuntu-22.04
+            cmake_extra: ""
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libjack-jackd2-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev \
+            libfreetype6-dev libfontconfig1-dev libgl1-mesa-dev
+
+      - name: Configure
+        shell: bash
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_extra }}
+
+      - name: Build
+        shell: bash
+        run: cmake --build build --config Release --parallel 4 --target Fusion250_All render_test tuner_test
+
+      - name: DSP test
+        shell: bash
+        run: |
+          if [ -f build/Release/render_test.exe ]; then ./build/Release/render_test.exe . && ./build/Release/tuner_test.exe; else ./build/render_test . && ./build/tuner_test; fi
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p dist
+          ART=build/Fusion250_artefacts/Release
+          cp -R "$ART/VST3/"*.vst3 dist/
+          [ -d "$ART/AU" ]  && cp -R "$ART/AU/"*.component dist/ || true
+          [ -d "$ART/LV2" ] && cp -R "$ART/LV2/"*.lv2 dist/ || true
+          [ -d "$ART/Standalone" ] && cp -R "$ART/Standalone/"* dist/ || true
+          cp JSFX/Fusion250.jsfx dist/
+          cp README.md dist/
+
+      - name: Validate AU (macOS)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R "dist/Fusion 250.component" ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar || true
+          auval -v aufx F250 Fsna
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Fusion250-${{ matrix.name }}
+          path: dist
