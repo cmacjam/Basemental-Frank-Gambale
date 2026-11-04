@@ -30,6 +30,12 @@ int main (int argc, char** argv)
 
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc->createEditor());
     snapshot (*ed, outDir.getChildFile ("amp.png"));
+    {   // high-resolution front plate (2x)
+        const int w = ed->getWidth(), h = ed->getHeight();
+        ed->setSize (w * 2, h * 2);
+        snapshot (*ed, outDir.getChildFile ("faceplate@2x.png"));
+        ed->setSize (w, h);
+    }
 
     TunerPanel* tuner = nullptr;
     for (auto* ch : ed->getChildren())
