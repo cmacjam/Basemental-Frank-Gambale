@@ -3,14 +3,16 @@
 namespace
 {
     constexpr int kW = 960, kH = 470;
-    const juce::Colour oxblood   { 0xff3b1416 };
-    const juce::Colour oxblood2  { 0xff24090b };
-    const juce::Colour piping    { 0xffe9dcc0 };
-    const juce::Colour brassHi   { 0xffe3c48a };
-    const juce::Colour brassLo   { 0xffb38a4c };
-    const juce::Colour ink       { 0xff2a1a0f };   // engraved lettering
-    const juce::Colour cream     { 0xfff3e9d2 };
-    const juce::Colour amberLamp { 0xffffb03a };
+    // black & white theme
+    const juce::Colour oxblood   { 0xff151515 };   // black tolex
+    const juce::Colour oxblood2  { 0xff0a0a0a };
+    const juce::Colour piping    { 0xffeeeae0 };
+    const juce::Colour plateHi   { 0xff2c2c2c };   // black brushed faceplate
+    const juce::Colour plateLo   { 0xff111111 };
+    const juce::Colour greyText  { 0xffbdbdbd };
+    const juce::Colour ink       { 0xfff4efe4 };   // lettering: white on black
+    const juce::Colour cream     { 0xfff3eee2 };
+    const juce::Colour blueLamp  { 0xff3d8bff };
 
     juce::String serif() { return juce::Font::getDefaultSerifFontName(); }
 
@@ -24,7 +26,7 @@ namespace
                   juce::Justification j = juce::Justification::centred, bool italic = false)
     {
         g.setFont (engraveFont (size, italic));
-        g.setColour (juce::Colours::white.withAlpha (0.45f));
+        g.setColour (juce::Colours::black.withAlpha (0.8f));
         g.drawText (t, r.translated (0.0f, 1.0f), j);
         g.setColour (ink);
         g.drawText (t, r, j);
@@ -51,15 +53,15 @@ namespace
 AmpLookAndFeel::AmpLookAndFeel()
 {
     setColour (juce::ComboBox::textColourId, cream);
-    setColour (juce::ComboBox::arrowColourId, brassHi);
+    setColour (juce::ComboBox::arrowColourId, cream);
     setColour (juce::PopupMenu::backgroundColourId, oxblood2);
     setColour (juce::PopupMenu::textColourId, cream);
-    setColour (juce::PopupMenu::highlightedBackgroundColourId, brassLo);
-    setColour (juce::PopupMenu::highlightedTextColourId, ink);
-    setColour (juce::TextButton::textColourOffId, ink);
-    setColour (juce::TextButton::textColourOnId, ink);
+    setColour (juce::PopupMenu::highlightedBackgroundColourId, cream);
+    setColour (juce::PopupMenu::highlightedTextColourId, oxblood2);
+    setColour (juce::TextButton::textColourOffId, cream);
+    setColour (juce::TextButton::textColourOnId, oxblood2);
     setColour (juce::BubbleComponent::backgroundColourId, oxblood2);
-    setColour (juce::BubbleComponent::outlineColourId, brassLo);
+    setColour (juce::BubbleComponent::outlineColourId, greyText);
     setColour (juce::TooltipWindow::textColourId, cream);
 }
 
@@ -83,7 +85,7 @@ void AmpLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, i
             g.setColour (col);
             g.drawLine (c.x + r0 * std::sin (a), c.y - r0 * std::cos (a) + off, c.x + r1 * std::sin (a), c.y - r1 * std::cos (a) + off, th);
         };
-        line (1.0f, Colours::white.withAlpha (0.35f), 1.4f);
+        line (1.0f, Colours::black.withAlpha (0.7f), 1.4f);
         line (0.0f, ink, i % 5 == 0 ? 1.8f : 1.2f);
         if (! small && i % 2 == 0)
         {
@@ -98,11 +100,11 @@ void AmpLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, i
     const float kr = r * 0.50f;
     g.setColour (Colours::black.withAlpha (0.35f));
     g.fillEllipse (c.x - kr + 1.5f, c.y - kr + 3.0f, kr * 2, kr * 2);
-    ColourGradient skirt (Colour (0xff3a3533), c.x - kr * 0.6f, c.y - kr * 0.8f, Colour (0xff0b0a0a), c.x + kr * 0.7f, c.y + kr, true);
+    ColourGradient skirt (Colour (0xfffffcf4), c.x - kr * 0.6f, c.y - kr * 0.8f, Colour (0xffb9b1a1), c.x + kr * 0.7f, c.y + kr, true);
     g.setGradientFill (skirt);
     g.fillEllipse (c.x - kr, c.y - kr, kr * 2, kr * 2);
     // knurled rim
-    g.setColour (Colours::black.withAlpha (0.6f));
+    g.setColour (Colours::black.withAlpha (0.18f));
     for (int i = 0; i < 36; ++i)
     {
         const float a = (float) i * MathConstants<float>::twoPi / 36.0f;
@@ -120,17 +122,17 @@ void AmpLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, i
     const auto tf = AffineTransform::rotation (angle).translated (c);
     g.setColour (Colours::black.withAlpha (0.4f));
     g.fillPath (p, tf.translated (1.5f, 3.0f));
-    ColourGradient bake (Colour (0xff4a4442), c.x - kr * 0.5f, c.y - kr, Colour (0xff060505), c.x + kr * 0.6f, c.y + kr, true);
+    ColourGradient bake (Colour (0xfffffdf7), c.x - kr * 0.5f, c.y - kr, Colour (0xffc4bcab), c.x + kr * 0.6f, c.y + kr, true);
     g.setGradientFill (bake);
     g.fillPath (p, tf);
-    g.setColour (Colours::white.withAlpha (0.10f));
+    g.setColour (Colours::black.withAlpha (0.25f));
     g.strokePath (p, PathStrokeType (1.0f), tf);
-    // cream inlay line
-    g.setColour (cream);
+    // black inlay line
+    g.setColour (Colour (0xff111111));
     g.drawLine (c.x + (L * 0.92f) * std::sin (angle), c.y - (L * 0.92f) * std::cos (angle),
                 c.x + (kr * 0.15f) * std::sin (angle), c.y - (kr * 0.15f) * std::cos (angle), jmax (1.5f, r * 0.045f));
     // gloss
-    g.setColour (Colours::white.withAlpha (0.16f));
+    g.setColour (Colours::white.withAlpha (0.55f));
     g.fillEllipse (c.x - kr * 0.55f, c.y - kr * 0.7f, kr * 0.7f, kr * 0.4f);
 }
 
@@ -138,13 +140,13 @@ void AmpLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b, c
 {
     auto r = b.getLocalBounds().toFloat().reduced (1.5f);
     const bool on = b.getToggleState();
-    juce::ColourGradient grad (on ? amberLamp.brighter (0.2f) : cream, r.getX(), r.getY(),
-                               on ? amberLamp.darker (0.35f) : juce::Colour (0xffcdbf9f), r.getX(), r.getBottom(), false);
+    juce::ColourGradient grad (on ? cream : juce::Colour (0xff3a3a3a), r.getX(), r.getY(),
+                               on ? juce::Colour (0xffcfc8b8) : juce::Colour (0xff1c1c1c), r.getX(), r.getBottom(), false);
     g.setGradientFill (grad);
     g.fillRoundedRectangle (r, 4.0f);
     if (over) { g.setColour (juce::Colours::white.withAlpha (0.12f)); g.fillRoundedRectangle (r, 4.0f); }
     if (down) { g.setColour (juce::Colours::black.withAlpha (0.12f)); g.fillRoundedRectangle (r, 4.0f); }
-    g.setColour (ink.withAlpha (0.7f));
+    g.setColour (piping.withAlpha (on ? 0.9f : 0.35f));
     g.drawRoundedRectangle (r, 4.0f, 1.2f);
 }
 
@@ -158,7 +160,7 @@ void AmpLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool, int, i
     juce::Path arrow;
     const float ax = w - 16.0f, ay = h * 0.5f;
     arrow.addTriangle (ax - 5, ay - 2.5f, ax + 5, ay - 2.5f, ax, ay + 3.5f);
-    g.setColour (brassHi);
+    g.setColour (cream);
     g.fillPath (arrow);
 }
 
@@ -252,6 +254,11 @@ Fusion250Editor::Fusion250Editor (Fusion250Processor& p) : AudioProcessorEditor 
     irLabel.setFont (juce::FontOptions (serif(), 12.0f, juce::Font::italic));
     addAndMakeVisible (irLabel);
 
+    powerBtn.setTooltip ("Power: off silences the amp (the tuner keeps working)");
+    powerBtn.onStateChange = [this] { repaint(); };
+    addAndMakeVisible (powerBtn);
+    powerAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (proc.apvts, "power", powerBtn);
+
     setResizable (true, true);
     if (auto* c = getConstrainer()) { c->setFixedAspectRatio ((double) kW / kH); c->setSizeLimits (kW * 2 / 3, kH * 2 / 3, kW * 2, kH * 2); }
     setSize (kW, kH);
@@ -278,18 +285,18 @@ void Fusion250Editor::timerCallback()
 void Fusion250Editor::rebuildTextures()
 {
     juce::Random rng (250);
-    // brushed brass
+    // black brushed faceplate
     brushed = juce::Image (juce::Image::RGB, juce::jmax (1, plate.getWidth()), juce::jmax (1, plate.getHeight()), true);
     {
         juce::Graphics g (brushed);
-        juce::ColourGradient grad (brassHi, 0, 0, brassLo, 0, (float) plate.getHeight(), false);
-        grad.addColour (0.45, brassHi.interpolatedWith (brassLo, 0.35f));
+        juce::ColourGradient grad (plateHi, 0, 0, plateLo, 0, (float) plate.getHeight(), false);
+        grad.addColour (0.45, plateHi.interpolatedWith (plateLo, 0.35f));
         g.setGradientFill (grad);
         g.fillAll();
         for (int y = 0; y < plate.getHeight(); ++y)
         {
-            const float a = rng.nextFloat() * 0.10f;
-            g.setColour ((rng.nextBool() ? juce::Colours::white : juce::Colour (0xff6b4a1c)).withAlpha (a));
+            const float a = rng.nextFloat() * 0.05f;
+            g.setColour ((rng.nextBool() ? juce::Colours::white : juce::Colours::black).withAlpha (a));
             const float x0 = rng.nextFloat() * plate.getWidth() * 0.3f;
             g.drawHorizontalLine (y, x0, x0 + plate.getWidth() * (0.5f + rng.nextFloat() * 0.6f));
         }
@@ -302,7 +309,7 @@ void Fusion250Editor::rebuildTextures()
         for (int i = 0; i < getWidth() * getHeight() / 9; ++i)
         {
             const int x = rng.nextInt (getWidth()), y = rng.nextInt (getHeight());
-            g.setColour ((rng.nextBool() ? juce::Colours::black : juce::Colour (0xff6a2a2c)).withAlpha (0.25f + rng.nextFloat() * 0.3f));
+            g.setColour ((rng.nextBool() ? juce::Colours::black : juce::Colour (0xff2e2e2e)).withAlpha (0.3f + rng.nextFloat() * 0.4f));
             g.fillRect (x, y, 1 + rng.nextInt (2), 1);
         }
     }
@@ -323,7 +330,7 @@ void Fusion250Editor::paint (juce::Graphics& g)
     g.setColour (cream);
     g.drawText ("Basemental FG 250", np.withTrimmedLeft (12 * s), juce::Justification::centredLeft);
     g.setFont (juce::Font (juce::FontOptions (serif(), 10.5f * s, juce::Font::bold)));
-    g.setColour (brassHi);
+    g.setColour (greyText);
     g.drawText ("TWO CHANNEL", np.withTrimmedRight (12 * s).withTrimmedTop (2 * s), juce::Justification::centredRight);
 
     // piping around the plate, then the brushed plate itself
@@ -341,20 +348,28 @@ void Fusion250Editor::paint (juce::Graphics& g)
         for (auto pt : { pf.getTopLeft(), pf.getTopRight(), pf.getBottomLeft(), pf.getBottomRight() })
         {
             const auto c = pt + juce::Point<float> (pt.x < pf.getCentreX() ? 11 * s : -11 * s, pt.y < pf.getCentreY() ? 11 * s : -11 * s);
-            juce::ColourGradient sg (juce::Colour (0xfff0e6d0), c.x - 4 * s, c.y - 4 * s, juce::Colour (0xff6d5a3a), c.x + 4 * s, c.y + 4 * s, false);
+            juce::ColourGradient sg (juce::Colour (0xfff2f2f2), c.x - 4 * s, c.y - 4 * s, juce::Colour (0xff5e5e5e), c.x + 4 * s, c.y + 4 * s, false);
             g.setGradientFill (sg);
             g.fillEllipse (c.x - 4.5f * s, c.y - 4.5f * s, 9 * s, 9 * s);
-            g.setColour (ink.withAlpha (0.7f));
+            g.setColour (juce::Colours::black.withAlpha (0.7f));
             g.drawLine (c.x - 3 * s, c.y - 1.5f * s, c.x + 3 * s, c.y + 1.5f * s, 1.1f * s);
         }
     }
 
     // engraved row divider
     const float divY = (float) cleanBand.getY();
-    g.setColour (juce::Colours::white.withAlpha (0.4f));
-    g.drawHorizontalLine ((int) divY + 1, pf.getX() + 130 * s, pf.getRight() - 20 * s);
-    g.setColour (ink.withAlpha (0.6f));
-    g.drawHorizontalLine ((int) divY, pf.getX() + 130 * s, pf.getRight() - 20 * s);
+    g.setColour (juce::Colours::black.withAlpha (0.8f));
+    g.drawHorizontalLine ((int) divY + 1, pf.getX() + 130 * s, pf.getX() + 818 * s);
+    g.setColour (ink.withAlpha (0.55f));
+    g.drawHorizontalLine ((int) divY, pf.getX() + 130 * s, pf.getX() + 818 * s);
+    // power section: vertical divider, captions, blue ON lamp
+    g.setColour (ink.withAlpha (0.55f));
+    g.drawVerticalLine ((int) (pf.getX() + 830 * s), pf.getY() + 16 * s, pf.getBottom() - 16 * s);
+    const auto pb = powerBtn.getBounds().toFloat();
+    engrave (g, "POWER", { pb.getX() - 20 * s, pb.getY() - 22 * s, pb.getWidth() + 40 * s, 18 * s }, 14.5f * s);
+    const juce::Point<float> lamp (pb.getCentreX(), (float) cleanBand.getCentreY() + 8 * s);
+    engrave (g, "ON", { lamp.x - 30 * s, lamp.y - 34 * s, 60 * s, 18 * s }, 14.5f * s);
+    jewel (g, lamp, 7.5f * s, blueLamp, powerBtn.getToggleState());
 
     // row titles + jewel lamps
     auto rowTitle = [&] (juce::Rectangle<int> band, bool isLead)
@@ -405,7 +420,8 @@ void Fusion250Editor::resized()
     tuner.setBounds (plate);
     channelBtn.setBounds (S (30), cleanBand.getY() - S (17), S (90), S (34));
 
-    const int x0 = S (150), colW = S (128), knobSize = S (104);
+    const int x0 = S (140), colW = S (114), knobSize = S (100);
+    powerBtn.setBounds (plate.getX() + S (848), leadBand.getY() + S (40), S (62), S (82));
     auto placeKnob = [&] (Knob& k, juce::Rectangle<int> band, int col)
     {
         const int cx = x0 + col * colW + colW / 2;
@@ -433,4 +449,35 @@ void Fusion250Editor::resized()
     };
     smallKnob (knobs[11], S (820));
     smallKnob (knobs[12], S (905));
+}
+
+// =================================================================== rocker
+void RockerSwitch::paintButton (juce::Graphics& g, bool over, bool)
+{
+    auto r = getLocalBounds().toFloat().reduced (2.0f);
+    const bool on = getToggleState();
+    // bezel
+    g.setColour (juce::Colours::black.withAlpha (0.6f));
+    g.fillRoundedRectangle (r.translated (0, 2.0f), 5.0f);
+    juce::ColourGradient bez (juce::Colour (0xff5a5a5a), r.getX(), r.getY(), juce::Colour (0xff0c0c0c), r.getX(), r.getBottom(), false);
+    g.setGradientFill (bez);
+    g.fillRoundedRectangle (r, 5.0f);
+    auto face = r.reduced (r.getWidth() * 0.12f, r.getHeight() * 0.09f);
+    g.setColour (juce::Colour (0xff050505));
+    g.fillRoundedRectangle (face, 3.0f);
+    // rocker: the pressed half sits low and dark, the raised half catches the light
+    auto top = face.withHeight (face.getHeight() * 0.5f), bottom = face.withTrimmedTop (face.getHeight() * 0.5f);
+    auto raised = on ? top : bottom, pressed = on ? bottom : top;
+    juce::ColourGradient rg (juce::Colour (0xff3e3e3e), raised.getX(), on ? raised.getY() : raised.getBottom(),
+                             juce::Colour (0xff1a1a1a), raised.getX(), on ? raised.getBottom() : raised.getY(), false);
+    g.setGradientFill (rg);
+    g.fillRoundedRectangle (raised.reduced (2.0f, 1.0f), 2.5f);
+    g.setColour (juce::Colour (0xff101010));
+    g.fillRoundedRectangle (pressed.reduced (2.0f, 1.0f), 2.5f);
+    if (over) { g.setColour (juce::Colours::white.withAlpha (0.06f)); g.fillRoundedRectangle (face, 3.0f); }
+    // I / O marks
+    g.setColour (juce::Colour (0xfff4efe4).withAlpha (0.85f));
+    const float m = face.getWidth() * 0.12f;
+    g.fillRoundedRectangle (juce::Rectangle<float> (m * 0.35f, face.getHeight() * 0.18f).withCentre (top.getCentre()), 1.0f);
+    g.drawEllipse (juce::Rectangle<float> (face.getWidth() * 0.22f, face.getWidth() * 0.22f).withCentre (bottom.getCentre()), 1.6f);
 }

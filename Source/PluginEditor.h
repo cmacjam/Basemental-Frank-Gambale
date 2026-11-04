@@ -17,6 +17,14 @@ public:
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;
 };
 
+// Square rocker power switch: "I" side pressed = on
+class RockerSwitch : public juce::Button
+{
+public:
+    RockerSwitch() : juce::Button ("Power") { setClickingTogglesState (true); }
+    void paintButton (juce::Graphics&, bool over, bool down) override;
+};
+
 class Fusion250Editor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
@@ -44,6 +52,8 @@ private:
 
     juce::TextButton channelBtn { "CH" }, reverbBtn { "REVERB" }, padBtn { "-6 dB" }, irBtn { "Load IR..." }, tunerBtn { "TUNER" };
     TunerPanel tuner;
+    RockerSwitch powerBtn;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> powerAtt;
     juce::ComboBox guitarBox, outputBox, presetBox, cabBox, micBox;
     juce::Label irLabel;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> revAtt, padAtt;

@@ -82,6 +82,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout Fusion250Processor::createLa
         p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ID::lead[i], 1 }, String ("Lead ") + names[i], knob, leadDef[i]));
     p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ID::reverb, 1 }, "Reverb", knob, 2.5f));
     p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ID::revOn, 1 }, "Reverb On", true));
+    p.push_back (std::make_unique<AudioParameterBool> (ParameterID { "power", 1 }, "Power", true));
     StringArray voices, cabs;
     for (int i = 0; i < fusion::kNumVoices; ++i) voices.add (fusion::voiceName (i));
     for (int i = 0; i < fusion::kNumCabs; ++i) cabs.add (fusion::cabName (i));
@@ -260,6 +261,12 @@ void Fusion250Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         auto* o = buffer.getWritePointer (0);
         for (int i = 0; i < n; ++i) o[i] = 0.5f * (tmp.getSample (0, i) + tmp.getSample (1, i));
     }
+
+    // power switch: smooth fade so switching never clicks (tuner still listens)
+    const float powerTarget = v ("power") > 0.5f ? 1.0f : 0.0f;
+    if (powerGain != powerTarget || powerTarget < 1.0f)
+        for (int c = 0; c < numOut; ++c) buffer.applyGainRamp (c, 0, n, powerGain, powerTarget);
+    powerGain = powerTarget;
 
     if (tuning && v (ID::tunerMute) > 0.5f) buffer.clear();
 }

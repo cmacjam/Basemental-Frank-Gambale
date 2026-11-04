@@ -57,6 +57,7 @@ private:
     juce::File irFile;
     juce::AudioBuffer<float> monoIn, stereoTmp;
     int currentPreset = 0;
+    float powerGain = 1.0f;
 
     fusion::SampleRing tunerRing { 18 };
     std::atomic<bool> tunerOpen { false };
