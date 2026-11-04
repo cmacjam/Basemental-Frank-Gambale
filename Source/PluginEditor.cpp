@@ -6,12 +6,12 @@ namespace
     // black & white theme
     const juce::Colour oxblood   { 0xff151515 };   // black tolex
     const juce::Colour oxblood2  { 0xff0a0a0a };
-    const juce::Colour piping    { 0xfff0f0f0 };
+    const juce::Colour piping    { 0xffc9cdd1 };   // silver trim
     const juce::Colour plateHi   { 0xff2c2c2c };   // black brushed faceplate
     const juce::Colour plateLo   { 0xff111111 };
-    const juce::Colour greyText  { 0xffbdbdbd };
-    const juce::Colour ink       { 0xfff7f7f7 };   // lettering: white on black
-    const juce::Colour cream     { 0xfff6f6f6 };
+    const juce::Colour greyText  { 0xff3a3d40 };
+    const juce::Colour ink       { 0xffdadde0 };   // silver lettering   // lettering: white on black
+    const juce::Colour cream     { 0xffe2e5e8 };
     const juce::Colour blueLamp  { 0xff3d8bff };
 
     juce::String serif() { return juce::Font::getDefaultSerifFontName(); }
@@ -96,52 +96,46 @@ void AmpLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, i
         }
     }
 
-    // bakelite skirt
-    const float kr = r * 0.50f;
-    g.setColour (Colours::black.withAlpha (0.35f));
-    g.fillEllipse (c.x - kr + 1.5f, c.y - kr + 3.0f, kr * 2, kr * 2);
-    ColourGradient skirt (Colour (0xffffffff), c.x - kr * 0.6f, c.y - kr * 0.8f, Colour (0xffb0b0b0), c.x + kr * 0.7f, c.y + kr, true);
+    // machined-aluminium knob: knurled skirt + brushed cap + engraved line
+    const float kr = r * 0.56f;
+    g.setColour (Colours::black.withAlpha (0.45f));
+    g.fillEllipse (c.x - kr + 1.5f, c.y - kr + 3.5f, kr * 2, kr * 2);
+    ColourGradient skirt (Colour (0xffd9dcdf), c.x - kr, c.y - kr, Colour (0xff55595d), c.x + kr, c.y + kr, false);
     g.setGradientFill (skirt);
     g.fillEllipse (c.x - kr, c.y - kr, kr * 2, kr * 2);
-    // knurled rim
-    g.setColour (Colours::black.withAlpha (0.18f));
-    for (int i = 0; i < 36; ++i)
+    g.setColour (Colours::black.withAlpha (0.35f));
+    for (int i = 0; i < 60; ++i)   // knurling
     {
-        const float a = (float) i * MathConstants<float>::twoPi / 36.0f;
-        g.drawLine (c.x + kr * 0.86f * std::sin (a), c.y - kr * 0.86f * std::cos (a), c.x + kr * std::sin (a), c.y - kr * std::cos (a), 1.0f);
+        const float a = (float) i * MathConstants<float>::twoPi / 60.0f;
+        g.drawLine (c.x + kr * 0.84f * std::sin (a), c.y - kr * 0.84f * std::cos (a), c.x + kr * std::sin (a), c.y - kr * std::cos (a), 0.9f);
     }
-
-    // chicken-head pointer
-    Path p;
-    const float L = r * 0.74f, wB = kr * 0.62f;
-    p.startNewSubPath (0.0f, -L);
-    p.cubicTo (wB * 0.35f, -L * 0.75f, wB, -kr * 0.2f, wB * 0.85f, kr * 0.45f);
-    p.cubicTo (wB * 0.6f, kr * 0.85f, -wB * 0.6f, kr * 0.85f, -wB * 0.85f, kr * 0.45f);
-    p.cubicTo (-wB, -kr * 0.2f, -wB * 0.35f, -L * 0.75f, 0.0f, -L);
-    p.closeSubPath();
-    const auto tf = AffineTransform::rotation (angle).translated (c);
-    g.setColour (Colours::black.withAlpha (0.4f));
-    g.fillPath (p, tf.translated (1.5f, 3.0f));
-    ColourGradient bake (Colour (0xffffffff), c.x - kr * 0.5f, c.y - kr, Colour (0xffbdbdbd), c.x + kr * 0.6f, c.y + kr, true);
-    g.setGradientFill (bake);
-    g.fillPath (p, tf);
-    g.setColour (Colours::black.withAlpha (0.25f));
-    g.strokePath (p, PathStrokeType (1.0f), tf);
-    // black inlay line
-    g.setColour (Colour (0xff111111));
-    g.drawLine (c.x + (L * 0.92f) * std::sin (angle), c.y - (L * 0.92f) * std::cos (angle),
-                c.x + (kr * 0.15f) * std::sin (angle), c.y - (kr * 0.15f) * std::cos (angle), jmax (1.5f, r * 0.045f));
-    // gloss
-    g.setColour (Colours::white.withAlpha (0.55f));
-    g.fillEllipse (c.x - kr * 0.55f, c.y - kr * 0.7f, kr * 0.7f, kr * 0.4f);
+    const float cr = kr * 0.80f;
+    ColourGradient cap (Colour (0xfff4f6f8), c.x - cr * 0.7f, c.y - cr * 0.8f, Colour (0xff8a8f94), c.x + cr * 0.8f, c.y + cr, false);
+    cap.addColour (0.5, Colour (0xffc4c8cc));
+    g.setGradientFill (cap);
+    g.fillEllipse (c.x - cr, c.y - cr, cr * 2, cr * 2);
+    for (int ring = 1; ring < 9; ++ring)   // concentric turning marks
+    {
+        const float rr = cr * (float) ring / 9.0f;
+        g.setColour ((ring % 2 ? Colours::white : Colours::black).withAlpha (0.06f));
+        g.drawEllipse (c.x - rr, c.y - rr, rr * 2, rr * 2, 0.8f);
+    }
+    g.setColour (Colours::black.withAlpha (0.5f));
+    g.drawEllipse (c.x - cr, c.y - cr, cr * 2, cr * 2, 0.8f);
+    // engraved indicator line
+    const float l0 = cr * 0.18f, l1 = cr * 0.95f;
+    g.setColour (Colour (0xff101214));
+    g.drawLine (c.x + l0 * std::sin (angle), c.y - l0 * std::cos (angle), c.x + l1 * std::sin (angle), c.y - l1 * std::cos (angle), jmax (2.0f, r * 0.055f));
+    g.setColour (Colours::white.withAlpha (0.35f));
+    g.fillEllipse (c.x - cr * 0.6f, c.y - cr * 0.75f, cr * 0.75f, cr * 0.35f);
 }
 
 void AmpLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down)
 {
     auto r = b.getLocalBounds().toFloat().reduced (1.5f);
     const bool on = b.getToggleState();
-    juce::ColourGradient grad (on ? cream : juce::Colour (0xff3a3a3a), r.getX(), r.getY(),
-                               on ? juce::Colour (0xffcccccc) : juce::Colour (0xff1c1c1c), r.getX(), r.getBottom(), false);
+    juce::ColourGradient grad (on ? juce::Colour (0xffeef0f2) : juce::Colour (0xff3a3c3e), r.getX(), r.getY(),
+                               on ? juce::Colour (0xff9da2a7) : juce::Colour (0xff1a1b1c), r.getX(), r.getBottom(), false);
     g.setGradientFill (grad);
     g.fillRoundedRectangle (r, 4.0f);
     if (over) { g.setColour (juce::Colours::white.withAlpha (0.12f)); g.fillRoundedRectangle (r, 4.0f); }
@@ -329,12 +323,26 @@ void Fusion250Editor::paint (juce::Graphics& g)
 
     // nameplate
     auto np = juce::Rectangle<float> (16 * s, 9 * s, 340 * s, 34 * s);
-    g.setColour (oxblood2);
-    g.fillRoundedRectangle (np, 5 * s);
-    g.setColour (piping);
+    {   // brushed-aluminium badge
+        juce::ColourGradient al (juce::Colour (0xffeceff2), np.getX(), np.getY(), juce::Colour (0xff9ea3a8), np.getX(), np.getBottom(), false);
+        al.addColour (0.5, juce::Colour (0xffcfd3d7));
+        g.setGradientFill (al);
+        g.fillRoundedRectangle (np, 5 * s);
+        juce::Random rr (7);
+        juce::Graphics::ScopedSaveState ss (g);
+        g.reduceClipRegion (np.toNearestInt());
+        for (float y = np.getY(); y < np.getBottom(); y += 1.0f)
+        {
+            g.setColour ((rr.nextBool() ? juce::Colours::white : juce::Colours::black).withAlpha (rr.nextFloat() * 0.08f));
+            g.drawHorizontalLine ((int) y, np.getX(), np.getRight());
+        }
+    }
+    g.setColour (juce::Colours::black.withAlpha (0.6f));
     g.drawRoundedRectangle (np.reduced (2.5f * s), 4 * s, 1.2f * s);
     g.setFont (engraveFont (24 * s, true));
-    g.setColour (cream);
+    g.setColour (juce::Colours::white.withAlpha (0.6f));
+    g.drawText ("Basemental FG 250", np.withTrimmedLeft (12 * s).translated (0, 1.0f), juce::Justification::centredLeft);
+    g.setColour (juce::Colour (0xff1a1c1e));
     g.drawText ("Basemental FG 250", np.withTrimmedLeft (12 * s), juce::Justification::centredLeft);
     g.setFont (juce::Font (juce::FontOptions (serif(), 10.5f * s, juce::Font::bold)));
     g.setColour (greyText);
