@@ -6,12 +6,12 @@ namespace
     // black & white theme
     const juce::Colour oxblood   { 0xff151515 };   // black tolex
     const juce::Colour oxblood2  { 0xff0a0a0a };
-    const juce::Colour piping    { 0xffeeeae0 };
+    const juce::Colour piping    { 0xfff0f0f0 };
     const juce::Colour plateHi   { 0xff2c2c2c };   // black brushed faceplate
     const juce::Colour plateLo   { 0xff111111 };
     const juce::Colour greyText  { 0xffbdbdbd };
-    const juce::Colour ink       { 0xfff4efe4 };   // lettering: white on black
-    const juce::Colour cream     { 0xfff3eee2 };
+    const juce::Colour ink       { 0xfff7f7f7 };   // lettering: white on black
+    const juce::Colour cream     { 0xfff6f6f6 };
     const juce::Colour blueLamp  { 0xff3d8bff };
 
     juce::String serif() { return juce::Font::getDefaultSerifFontName(); }
@@ -100,7 +100,7 @@ void AmpLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, i
     const float kr = r * 0.50f;
     g.setColour (Colours::black.withAlpha (0.35f));
     g.fillEllipse (c.x - kr + 1.5f, c.y - kr + 3.0f, kr * 2, kr * 2);
-    ColourGradient skirt (Colour (0xfffffcf4), c.x - kr * 0.6f, c.y - kr * 0.8f, Colour (0xffb9b1a1), c.x + kr * 0.7f, c.y + kr, true);
+    ColourGradient skirt (Colour (0xffffffff), c.x - kr * 0.6f, c.y - kr * 0.8f, Colour (0xffb0b0b0), c.x + kr * 0.7f, c.y + kr, true);
     g.setGradientFill (skirt);
     g.fillEllipse (c.x - kr, c.y - kr, kr * 2, kr * 2);
     // knurled rim
@@ -122,7 +122,7 @@ void AmpLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, i
     const auto tf = AffineTransform::rotation (angle).translated (c);
     g.setColour (Colours::black.withAlpha (0.4f));
     g.fillPath (p, tf.translated (1.5f, 3.0f));
-    ColourGradient bake (Colour (0xfffffdf7), c.x - kr * 0.5f, c.y - kr, Colour (0xffc4bcab), c.x + kr * 0.6f, c.y + kr, true);
+    ColourGradient bake (Colour (0xffffffff), c.x - kr * 0.5f, c.y - kr, Colour (0xffbdbdbd), c.x + kr * 0.6f, c.y + kr, true);
     g.setGradientFill (bake);
     g.fillPath (p, tf);
     g.setColour (Colours::black.withAlpha (0.25f));
@@ -141,7 +141,7 @@ void AmpLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b, c
     auto r = b.getLocalBounds().toFloat().reduced (1.5f);
     const bool on = b.getToggleState();
     juce::ColourGradient grad (on ? cream : juce::Colour (0xff3a3a3a), r.getX(), r.getY(),
-                               on ? juce::Colour (0xffcfc8b8) : juce::Colour (0xff1c1c1c), r.getX(), r.getBottom(), false);
+                               on ? juce::Colour (0xffcccccc) : juce::Colour (0xff1c1c1c), r.getX(), r.getBottom(), false);
     g.setGradientFill (grad);
     g.fillRoundedRectangle (r, 4.0f);
     if (over) { g.setColour (juce::Colours::white.withAlpha (0.12f)); g.fillRoundedRectangle (r, 4.0f); }
@@ -234,7 +234,11 @@ Fusion250Editor::Fusion250Editor (Fusion250Processor& p) : AudioProcessorEditor 
 
     tunerBtn.setClickingTogglesState (true);
     tunerBtn.setTooltip ("Strobe tuner (0.1 cent display)");
-    tunerBtn.onClick = [this] { tuner.setVisible (tunerBtn.getToggleState()); };
+    tunerBtn.onClick = [this]
+    {
+        tuner.setVisible (tunerBtn.getToggleState());
+        tuner.toFront (false);   // cover the power switch and footswitch
+    };
     addAndMakeVisible (tunerBtn);
     addChildComponent (tuner);
 
@@ -505,7 +509,7 @@ void RockerSwitch::paintButton (juce::Graphics& g, bool over, bool)
     g.fillRoundedRectangle (pressed.reduced (2.0f, 1.0f), 2.5f);
     if (over) { g.setColour (juce::Colours::white.withAlpha (0.06f)); g.fillRoundedRectangle (face, 3.0f); }
     // I / O marks
-    g.setColour (juce::Colour (0xfff4efe4).withAlpha (0.85f));
+    g.setColour (juce::Colour (0xfff7f7f7).withAlpha (0.85f));
     const float m = face.getWidth() * 0.12f;
     g.fillRoundedRectangle (juce::Rectangle<float> (m * 0.35f, face.getHeight() * 0.18f).withCentre (top.getCentre()), 1.0f);
     g.drawEllipse (juce::Rectangle<float> (face.getWidth() * 0.22f, face.getWidth() * 0.22f).withCentre (bottom.getCentre()), 1.6f);

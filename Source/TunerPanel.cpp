@@ -4,10 +4,10 @@ namespace
 {
     const juce::Colour bg       { 0xff0d0f11 };
     const juce::Colour panel    { 0xff16191d };
-    const juce::Colour ivory    { 0xfff1e8d6 };
-    const juce::Colour brass    { 0xffd6a84f };
-    const juce::Colour amber    { 0xffffa53a };
-    const juce::Colour inTune   { 0xff58f28a };
+    const juce::Colour ivory    { 0xfff2f2f2 };
+    const juce::Colour brass    { 0xffffffff };
+    const juce::Colour amber    { 0xfff7f7f7 };   // black-and-white display
+    const juce::Colour inTune   { 0xff58f28a };   // lamp only
     const juce::Colour redFlat  { 0xffff5a4a };
     constexpr double kInTuneCents = 0.5;   // green light window
     constexpr float kBase = 936.0f;        // panel design width
@@ -84,7 +84,7 @@ void TunerPanel::visibilityChanged()
 {
     const bool on = isVisible() && getParentComponent() != nullptr;
     proc.setTunerOpen (on);
-    if (on) { lastTime = juce::Time::getMillisecondCounterHiRes(); startTimerHz (60); }
+    if (on) { toFront (false); lastTime = juce::Time::getMillisecondCounterHiRes(); startTimerHz (60); }
     else stopTimer();
 }
 
@@ -177,7 +177,7 @@ void TunerPanel::paint (juce::Graphics& g)
     const bool live = hasReading;
     const double c = smoothCents;
     const bool locked = live && std::fabs (c) < kInTuneCents;
-    const juce::Colour accent = ! live ? ivory.withAlpha (0.25f) : (locked ? inTune : amber);
+    const juce::Colour accent = ! live ? ivory.withAlpha (0.25f) : amber;
     const int shift = keyShift();
     const bool man = manualMode();
 
