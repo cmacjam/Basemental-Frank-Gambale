@@ -44,10 +44,10 @@ private:
 
     juce::TextButton channelBtn { "CH" }, reverbBtn { "REVERB" }, padBtn { "-6 dB" }, irBtn { "Load IR..." }, tunerBtn { "TUNER" };
     TunerPanel tuner;
-    juce::ComboBox guitarBox, outputBox, presetBox;
+    juce::ComboBox guitarBox, outputBox, presetBox, cabBox, micBox;
     juce::Label irLabel;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> revAtt, padAtt;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> guitarAtt, outputAtt;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> guitarAtt, outputAtt, cabAtt, micAtt;
     std::unique_ptr<juce::FileChooser> chooser;
 
     juce::Rectangle<int> header, plate, leadBand, cleanBand, footer;

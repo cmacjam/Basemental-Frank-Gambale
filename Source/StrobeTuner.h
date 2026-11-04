@@ -1,6 +1,6 @@
 #pragma once
 // =============================================================================
-//  Fusion 250 — strobe tuner core (header-only, no JUCE dependency)
+//  Basemental FG 250 — strobe tuner core (header-only, no JUCE dependency)
 //
 //  How it works (the same principle as a mechanical / electronic strobe):
 //   1. A coarse pitch detector (YIN on a decimated copy) picks the nearest
@@ -60,13 +60,47 @@ private:
 };
 
 // ---------------------------------------------------------------- tuner
+// Historical temperaments as cents deviation from equal temperament for each
+// pitch class counted up from the temperament's root (standard published values).
+static constexpr int kNumTemperaments = 8;
+inline const char* temperamentName (int i)
+{
+    static const char* n[kNumTemperaments] = { "Equal", "Just (5-limit major)", "Pythagorean", "1/4-Comma Meantone",
+                                               "Werckmeister III", "Kirnberger III", "Vallotti", "Young II" };
+    return n[std::min (std::max (i, 0), kNumTemperaments - 1)];
+}
+inline double temperamentOffset (int temperament, int semitoneFromRoot)
+{
+    static const double t[kNumTemperaments][12] = {
+        { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        { 0, 11.73, 3.91, 15.64, -13.69, -1.96, -9.78, 1.96, 13.69, -15.64, -3.91, -11.73 },
+        { 0, 13.69, 3.91, -5.87, 7.82, -1.96, 11.73, 1.96, 15.64, 5.87, -3.91, 9.78 },
+        { 0, -23.95, -6.84, 10.26, -13.69, 3.42, -20.53, -3.42, -27.37, -10.26, 6.84, -17.11 },
+        { 0, -9.78, -7.82, -5.87, -9.78, -1.96, -11.73, -3.91, -7.82, -11.73, -3.91, -7.82 },
+        { 0, -9.78, -6.84, -5.87, -13.69, -1.96, -9.78, -3.42, -7.82, -10.26, -3.91, -11.73 },
+        { 0, -5.87, -3.91, -1.96, -7.82, 1.96, -7.82, -1.96, -3.91, -5.87, 0, -9.78 },
+        { 0, -9.78, -3.91, -5.87, -7.82, -1.96, -11.73, -1.96, -7.82, -5.87, -3.91, -9.78 },
+    };
+    return t[std::min (std::max (temperament, 0), kNumTemperaments - 1)][((semitoneFromRoot % 12) + 12) % 12];
+}
+
+struct TunerSettings
+{
+    double refA = 440.0;        // concert A
+    double offsetCents = 0;     // global offset applied to every target
+    int temperament = 0;        // index into temperamentName()
+    int root = 0;               // temperament root pitch class (0 = C)
+    bool manual = false;        // manual note selection
+    int manualNote = 9;         // pitch class to tune to when manual (concert pitch)
+};
+
 struct TunerResult
 {
     bool valid = false;
-    int midiNote = 69;          // nearest note
-    double cents = 0;           // deviation from the note, cents
+    int midiNote = 69;          // target note (concert pitch)
+    double cents = 0;           // deviation from the target, cents
     double freq = 0;            // measured fundamental, Hz
-    double refFreq = 0;         // ideal frequency of the note, Hz
+    double refFreq = 0;         // target frequency (incl. temperament + offset), Hz
     double deltaHz = 0;         // freq - refFreq (drives the strobe speed)
     double levelDb = -120;
     int harmonic = 1;           // which harmonic the strobe locked to
@@ -81,10 +115,23 @@ public:
         static const char* n[12] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
         return n[((midi % 12) + 12) % 12];
     }
-    static int octaveOf (int midi) { return midi / 12 - 1; }
+    static int octaveOf (int midi) { return (int) std::floor (midi / 12.0) - 1; }
+
+    static double targetFreq (int note, const TunerSettings& s)
+    {
+        const double c = s.offsetCents + temperamentOffset (s.temperament, note - s.root);
+        return s.refA * std::pow (2.0, (note - 69) / 12.0 + c / 1200.0);
+    }
+
+    // equal-tempered A=440-style convenience overload
+    TunerResult analyse (const float* x, int n, double fs, double refA)
+    {
+        TunerSettings s; s.refA = refA;
+        return analyse (x, n, fs, s);
+    }
 
     // x: most recent samples (oldest first)
-    TunerResult analyse (const float* x, int n, double fs, double refA)
+    TunerResult analyse (const float* x, int n, double fs, const TunerSettings& st)
     {
         TunerResult r;
         if (n < 4096 || fs < 8000) return r;
@@ -97,24 +144,42 @@ public:
         if (r.levelDb < -62.0) { lastNote = -1; return r; }
 
         // ---- 1. coarse pitch (YIN, decimated to ~8 kHz)
-        double f0 = coarsePitch (x, n, fs);
+        const double f0 = coarsePitch (x, n, fs);
         if (f0 <= 0) { lastNote = -1; return r; }
 
-        // ---- 2. nearest note, with hysteresis so the display doesn't flicker
-        auto noteFor = [refA] (double f) { return 69.0 + 12.0 * std::log2 (f / refA); };
-        int note = (int) std::lround (noteFor (f0));
-        if (lastNote >= 0 && std::fabs (noteFor (f0) - lastNote) < 0.62) note = lastNote;
+        // ---- 2. pick the target note
+        auto centsTo = [&st] (double f, int note) { return 1200.0 * std::log2 (f / targetFreq (note, st)); };
+        auto nearestTarget = [&] (double f)
+        {
+            const int guess = (int) std::lround (69.0 + 12.0 * std::log2 (f / st.refA) - st.offsetCents / 100.0);
+            int best = guess; double bc = 1e9;
+            if (st.manual)
+            {
+                // the selected pitch class, in whichever octave is closest
+                for (int k = guess - 7; k <= guess + 7; ++k)
+                    if (((k % 12) + 12) % 12 == st.manualNote && std::fabs (centsTo (f, k)) < bc) { bc = std::fabs (centsTo (f, k)); best = k; }
+            }
+            else
+                for (int k = guess - 1; k <= guess + 1; ++k)
+                    if (std::fabs (centsTo (f, k)) < bc) { bc = std::fabs (centsTo (f, k)); best = k; }
+            return best;
+        };
+        int note = nearestTarget (f0);
+        // hysteresis so the display doesn't flicker between neighbours
+        if (! st.manual && lastNote >= 0 && std::fabs (centsTo (f0, lastNote)) < 62.0) note = lastNote;
+        if (st.manual && lastNote >= 0 && ((lastNote % 12) + 12) % 12 == st.manualNote && std::fabs (centsTo (f0, lastNote)) < 700.0) note = lastNote;
 
-        // ---- 3. strobe: phase-slope measurement against the reference
+        // ---- 3. strobe: phase-slope measurement against the target
+        const double window = st.manual ? 250.0 : 60.0;   // capture range, cents
         Fine fine;
         for (int pass = 0; pass < 2; ++pass)
         {
-            const double fr = refA * std::pow (2.0, (note - 69) / 12.0);
+            const double fr = targetFreq (note, st);
             fine = strobe (x, n, fs, fr);
             if (! fine.ok) { lastNote = -1; return r; }
             const double c = 1200.0 * std::log2 ((fr + fine.deltaHz) / fr);
-            if (std::fabs (c) <= 60.0 || pass == 1) { r.refFreq = fr; break; }
-            note = (int) std::lround (noteFor (fr + fine.deltaHz)); // crossed a note boundary
+            if (std::fabs (c) <= window || pass == 1) { r.refFreq = fr; break; }
+            note = nearestTarget (fr + fine.deltaHz);   // crossed a note boundary
         }
 
         r.midiNote = note;
@@ -123,7 +188,7 @@ public:
         r.cents = 1200.0 * std::log2 (r.freq / r.refFreq);
         r.harmonic = fine.harmonic;
         r.confidence = fine.confidence;
-        r.valid = fine.confidence > 0.35 && std::fabs (r.cents) <= 60.0;
+        r.valid = fine.confidence > 0.35 && std::fabs (r.cents) <= window;
         lastNote = r.valid ? note : -1;
         return r;
     }

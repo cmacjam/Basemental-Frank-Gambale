@@ -1,4 +1,4 @@
-# Fusion 250 — two-channel fusion amp plug-in
+# Basemental FG 250 — two-channel fusion amp plug-in
 
 A guitar amp plug-in modeled on the signal chain of the DV Mark FG Little 250
 Amplitude (Frank Gambale signature), with optional Kiesel FG1/FG2 guitar voicings.
@@ -23,7 +23,9 @@ Input -> [Guitar Voice] -> CLEAN: Gain -> Low/Mid/High -> Level --+
 | Low / Mid / High | Post-gain 3-band EQ, 5 = flat. Shelves +/-15 dB, broad mid +/-12 dB |
 | Level | Feed to the power stage. Above ~7 it starts pushing the power stage into soft limiting, like a cranked amp |
 | Reverb + On/Off | Shared digital reverb (the hardware footswitch toggles it) |
-| Guitar Voice | Off, FG1 Neck, FG1 Bridge, FG2. Gentle EQ curves that nudge a DI'd guitar toward those instruments. Leave Off for your own guitar's sound |
+| Guitar Voice | Off, FG1 Neck, FG1 Bridge, FG2, Single-Coil Neck, Single-Coil Bridge, Twang Bridge, Vintage Humbucker Neck, Hot Humbucker Bridge, Archtop Hollowbody (jazz), Semi-Hollow, Superstrat HSS Bridge. Gentle EQ tilts that nudge a DI'd guitar toward those characters; they can't turn one guitar into another. Leave Off for your own guitar's sound |
+| Cabinet | Fusion 1x12, 1x12 Open Back, 2x12 Closed Back, 4x12 Closed Back, 1x15 Jazz, 2x10 Vintage Open, 1x12 Jazz Combo, 1x8 Small Combo (used when Output = Built-in Cab) |
+| Mic | On-Axis (brightest), Off-Axis (darker, smoother), Close (more low end, proximity effect) |
 | Output | Pre Out (no power amp or cab, like the rear jack), Built-in Cab, or User IR (load any cabinet .wav) |
 | -6 dB | Pre Out pad, same as the hardware switch |
 | Input / Master | Input trim and master output (dB) |
@@ -62,6 +64,15 @@ and weak fundamentals, at 44.1/48/96 kHz and A=440/432. Worst error is
 **0.02 cent**. Real-world accuracy is limited by your audio interface's clock,
 typically +/-0.03 to 0.09 cent.
 
+Stress tests (`tests/tuner_stress_test.cpp`), all within 0.1 cent (worst 0.06):
+88.2 and 192 kHz; low B on 7-strings and B0/E1 on bass; string bends that
+settle onto the note; 50/60 Hz mains hum 40 dB below the note; hard-clipped
+input; DC offset. Time to lock within 0.1 cent after a pluck: about 110 ms
+from the G string up, 150-190 ms on A2/E2, 290 ms on A1, 370 ms on bass E1.
+Very loud hum (30 dB below the note) right next to the note's pitch can push
+a low-string reading out by ~0.2 cent; fix the hum (cable, ground, single-coil
+position) rather than trust the last decimal then.
+
 **FX loop:** a plug-in can't host other plug-ins inside itself. To match the
 hardware loop (after the reverb, before the power amp), set Output to
 *Pre Out*, insert your delays/modulation after it, then add a cab IR loader.
@@ -91,8 +102,11 @@ Logic only loads Audio Units, which must be compiled on a Mac:
 3. It builds a universal AU + VST3, installs them to
    `~/Library/Audio/Plug-Ins/`, and runs `auval`, the same validation Logic
    runs. Look for **AU VALIDATION SUCCEEDED**.
-4. In Logic: a track's Audio FX slot > Audio Units > Fusion Audio > Fusion 250.
+4. In Logic: a track's Audio FX slot > Audio Units > Basemental > Basemental FG 250.
    If it isn't listed: Logic Pro > Settings > Plug-in Manager > Reset & Rescan Selection.
+
+Easier: use the **installer** instead (see *Installers* below). It needs no
+building and installs both the AU and VST3.
 
 The REAPER JSFX version has no tuner (JSFX can't host this kind of GUI);
 use the VST3/AU for the tuner.
@@ -101,29 +115,27 @@ use the VST3/AU for the tuner.
 
 1. In REAPER: Options > Show REAPER resource path.
 2. Copy `JSFX/Fusion250.jsfx` into the `Effects` folder there.
-3. On a track: FX > JS > Fusion 250.
+3. On a track: FX > JS > Basemental FG 250.
 4. For your own cab IR, set Output to *Power only* and add ReaVerb after it.
 
-## Getting Mac / Windows / Linux builds without a dev setup
+## Installers
 
-1. Create a free GitHub repository and upload this whole folder.
-2. Open the **Actions** tab. The included workflow builds macOS (universal AU +
-   VST3), Windows (VST3) and Linux (VST3 + LV2) automatically.
-3. Download the `Fusion250-macOS`, `-Windows` and `-Linux` artifacts from the run.
+Every push to GitHub builds installers on Apple, Microsoft and Linux cloud
+machines, installs each one there, and checks it (`auval` for the Logic AU).
+Download them from the repository's **Actions** tab > latest run > *Artifacts*:
 
-### Installing
+| | File | Installs |
+|---|---|---|
+| macOS | `BasementalFG250-1.1.0-macOS-Installer.pkg` | AU to `/Library/Audio/Plug-Ins/Components`, VST3 to `/Library/Audio/Plug-Ins/VST3` (universal: Apple Silicon + Intel) |
+| Windows | `BasementalFG250-1.1.0-Windows-Setup.exe` | VST3 to `C:\Program Files\Common Files\VST3`, standalone app; uninstaller in Settings > Apps |
+| Linux | `BasementalFG250-1.1.0-Linux.tar.gz` | `./install.sh` to `~/.vst3` and `~/.lv2` (`--system`, `--uninstall`) |
 
-| | VST3 | AU | LV2 |
-|---|---|---|---|
-| macOS | `~/Library/Audio/Plug-Ins/VST3/` | `~/Library/Audio/Plug-Ins/Components/` | - |
-| Windows | `C:\Program Files\Common Files\VST3\` | - | - |
-| Linux | `~/.vst3/` | - | `~/.lv2/` |
-
-On macOS, unsigned plug-ins downloaded from the internet are blocked. After
-copying, run once in Terminal:
-`xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/"Fusion 250.component"`
-(same for the `.vst3`). For distribution to others you'd sign and notarize
-with an Apple Developer account.
+The installers aren't signed with a paid Apple/Microsoft developer certificate,
+so the first time:
+- **macOS:** double-click the .pkg. If macOS says it can't verify the developer,
+  click Done, open **System Settings > Privacy & Security**, scroll down and
+  click **Open Anyway** next to the Basemental FG 250 message, then run it again.
+- **Windows:** if SmartScreen appears, click **More info > Run anyway**.
 
 ## Building locally
 

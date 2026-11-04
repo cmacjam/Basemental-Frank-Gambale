@@ -9,6 +9,8 @@ namespace ID
     static const char* reverb = "reverb";
     static const char* revOn = "reverb_on";
     static const char* guitar = "guitar";
+    static const char* cabinet = "cabinet";
+    static const char* mic = "mic";
     static const char* output = "output";
     static const char* pad = "preout_pad";
     static const char* inTrim = "input_trim";
@@ -16,6 +18,12 @@ namespace ID
     static const char* tunerRef = "tuner_ref";
     static const char* tunerMute = "tuner_mute";
     static const char* tunerTuning = "tuner_tuning";
+    static const char* tunerMode = "tuner_mode";
+    static const char* tunerNote = "tuner_note";
+    static const char* tunerKey = "tuner_key";
+    static const char* tunerOffset = "tuner_offset";
+    static const char* tunerTemp = "tuner_temperament";
+    static const char* tunerRoot = "tuner_root";
 }
 
 // =========================================================== tuner thread
@@ -32,8 +40,17 @@ public:
             const int want = std::min (owner.tunerRing.capacity(), (int) (fs * 1.3));
             if ((int) scratch.size() < want) scratch.resize ((size_t) want);
             const int got = owner.tunerRing.readLatest (scratch.data(), want);
-            const double refA = owner.apvts.getRawParameterValue (ID::tunerRef)->load();
-            const auto r = core.analyse (scratch.data(), got, fs, refA);
+            auto pv = [this] (const char* id) { return (double) owner.apvts.getRawParameterValue (id)->load(); };
+            fusion::TunerSettings st;
+            st.refA = pv (ID::tunerRef);
+            st.offsetCents = pv (ID::tunerOffset);
+            st.temperament = (int) pv (ID::tunerTemp);
+            st.root = (int) pv (ID::tunerRoot);
+            st.manual = pv (ID::tunerMode) > 0.5;
+            // manual note buttons are in the selected key: convert to concert pitch
+            static const int keyShift[4] = { 0, 2, 7, 9 };   // C, Bb, F, Eb instruments
+            st.manualNote = (((int) pv (ID::tunerNote) - keyShift[(int) pv (ID::tunerKey) & 3]) % 12 + 12) % 12;
+            const auto r = core.analyse (scratch.data(), got, fs, st);
             {
                 const juce::SpinLock::ScopedLockType sl (owner.tunerLock);
                 owner.tunerResult = r;
@@ -65,8 +82,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout Fusion250Processor::createLa
         p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ID::lead[i], 1 }, String ("Lead ") + names[i], knob, leadDef[i]));
     p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ID::reverb, 1 }, "Reverb", knob, 2.5f));
     p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ID::revOn, 1 }, "Reverb On", true));
-    p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::guitar, 1 }, "Guitar Voice",
-                 StringArray { "Off (your guitar)", "FG1 Neck", "FG1 Bridge", "FG2" }, 0));
+    StringArray voices, cabs;
+    for (int i = 0; i < fusion::kNumVoices; ++i) voices.add (fusion::voiceName (i));
+    for (int i = 0; i < fusion::kNumCabs; ++i) cabs.add (fusion::cabName (i));
+    p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::guitar, 1 }, "Guitar Voice", voices, 0));
+    p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::cabinet, 1 }, "Cabinet", cabs, 0));
+    p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::mic, 1 }, "Mic Position",
+                 StringArray { "On-Axis", "Off-Axis", "Close (proximity)" }, 0));
     p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::output, 1 }, "Output",
                  StringArray { "Pre Out (no cab)", "Built-in Cab", "User IR" }, 1));
     p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ID::pad, 1 }, "Pre Out -6 dB", false));
@@ -80,6 +102,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout Fusion250Processor::createLa
     p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ID::tunerMute, 1 }, "Tuner Mute", true));
     p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::tunerTuning, 1 }, "Tuner String Guide",
                  StringArray { "Chromatic", "Standard (E A D G B E)", "Gambale (A D G C E A)", "Half Step Down", "Drop D", "7-String (B E A D G B E)" }, 2));
+    const StringArray notes { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+    StringArray temps;
+    for (int i = 0; i < fusion::kNumTemperaments; ++i) temps.add (fusion::temperamentName (i));
+    p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::tunerMode, 1 }, "Tuner Note Select", StringArray { "Auto", "Manual" }, 0));
+    p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::tunerNote, 1 }, "Tuner Manual Note", notes, 9));
+    p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::tunerKey, 1 }, "Tuner Key",
+                 StringArray { "C (concert)", "Bb", "F", "Eb" }, 0));
+    p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ID::tunerOffset, 1 }, "Tuner Cent Offset",
+                 NormalisableRange<float> (-50.0f, 50.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("cents")));
+    p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::tunerTemp, 1 }, "Tuner Temperament", temps, 0));
+    p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::tunerRoot, 1 }, "Tuner Temperament Root", notes, 0));
     return { p.begin(), p.end() };
 }
 
@@ -181,6 +214,8 @@ void Fusion250Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     p.reverb = v (ID::reverb);
     p.reverbOn = v (ID::revOn) > 0.5f;
     p.guitar = (int) v (ID::guitar);
+    p.cabinet = (int) v (ID::cabinet);
+    p.mic = (int) v (ID::mic);
     const int outputMode = (int) v (ID::output);
     const bool useIr = outputMode == 2 && convolution.getCurrentIRSize() > 0;
     p.output = outputMode == 0 ? 0 : (useIr ? 2 : 1);   // no IR loaded -> built-in cab

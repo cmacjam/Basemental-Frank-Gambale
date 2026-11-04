@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-#  Fusion 250 — build and install the Audio Unit (Logic Pro, GarageBand,
+#  Basemental FG 250 — build and install the Audio Unit (Logic Pro, GarageBand,
 #  MainStage) and VST3 on this Mac.
 #
 #  Double-click this file in Finder (first time: right-click > Open), or run
@@ -12,7 +12,7 @@ cd "$(dirname "$0")"
 
 say() { printf "\n\033[1;33m== %s\033[0m\n" "$1"; }
 
-say "Fusion 250 Mac build"
+say "Basemental FG 250 Mac build"
 
 # 1. Apple's Command Line Tools (compiler, git, make)
 if ! xcode-select -p >/dev/null 2>&1; then
@@ -46,24 +46,24 @@ VST3="$HOME/Library/Audio/Plug-Ins/VST3"
 # 4. Install for this user, clear quarantine, ad-hoc sign (needed on Apple Silicon)
 say "Installing"
 mkdir -p "$COMP" "$VST3"
-rm -rf "$COMP/Fusion 250.component" "$VST3/Fusion 250.vst3"
-cp -R "$ART/AU/Fusion 250.component" "$COMP/"
-cp -R "$ART/VST3/Fusion 250.vst3" "$VST3/"
-for b in "$COMP/Fusion 250.component" "$VST3/Fusion 250.vst3"; do
+rm -rf "$COMP/Basemental FG 250.component" "$VST3/Basemental FG 250.vst3"
+cp -R "$ART/AU/Basemental FG 250.component" "$COMP/"
+cp -R "$ART/VST3/Basemental FG 250.vst3" "$VST3/"
+for b in "$COMP/Basemental FG 250.component" "$VST3/Basemental FG 250.vst3"; do
     xattr -dr com.apple.quarantine "$b" 2>/dev/null || true
     codesign --force --deep --sign - "$b"
 done
-echo "AU   -> $COMP/Fusion 250.component"
-echo "VST3 -> $VST3/Fusion 250.vst3"
+echo "AU   -> $COMP/Basemental FG 250.component"
+echo "VST3 -> $VST3/Basemental FG 250.vst3"
 
 # 5. Validate exactly the way Logic Pro does
 say "Validating the Audio Unit (auval)"
 killall -9 AudioComponentRegistrar 2>/dev/null || true
 if auval -v aufx F250 Fsna > build-mac/auval.log 2>&1 && grep -q "AU VALIDATION SUCCEEDED" build-mac/auval.log; then
     say "AU VALIDATION SUCCEEDED"
-    echo "Open Logic Pro, then on a track: Audio FX > Audio Units > Fusion Audio > Fusion 250."
+    echo "Open Logic Pro, then on a track: Audio FX > Audio Units > Basemental > Basemental FG 250."
     echo "If Logic was already open, quit and reopen it. If it still isn't listed:"
-    echo "Logic Pro > Settings > Plug-in Manager > select Fusion 250 > Reset & Rescan Selection."
+    echo "Logic Pro > Settings > Plug-in Manager > select Basemental FG 250 > Reset & Rescan Selection."
 else
     tail -30 build-mac/auval.log
     say "auval reported a problem; full log in build-mac/auval.log"

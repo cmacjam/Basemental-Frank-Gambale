@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>Basemental FG 250 @VERSION@</title>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <options customize="allow" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+    <choices-outline>
+        <line choice="au"/>
+        <line choice="vst3"/>
+    </choices-outline>
+    <choice id="au" title="Audio Unit" description="For Logic Pro, GarageBand and MainStage. Installs to /Library/Audio/Plug-Ins/Components.">
+        <pkg-ref id="com.basemental.fg250.au"/>
+    </choice>
+    <choice id="vst3" title="VST3" description="For Ableton Live, Cubase, Studio One, Reaper, Bitwig and others. Installs to /Library/Audio/Plug-Ins/VST3.">
+        <pkg-ref id="com.basemental.fg250.vst3"/>
+    </choice>
+    <pkg-ref id="com.basemental.fg250.au" version="@VERSION@" onConclusion="none">au.pkg</pkg-ref>
+    <pkg-ref id="com.basemental.fg250.vst3" version="@VERSION@" onConclusion="none">vst3.pkg</pkg-ref>
+</installer-gui-script>

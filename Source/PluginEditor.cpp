@@ -218,6 +218,10 @@ Fusion250Editor::Fusion250Editor (Fusion250Processor& p) : AudioProcessorEditor 
     };
     setupBox (guitarBox, "guitar");
     setupBox (outputBox, "output");
+    setupBox (cabBox, "cabinet");
+    setupBox (micBox, "mic");
+    cabAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (proc.apvts, "cabinet", cabBox);
+    micAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (proc.apvts, "mic", micBox);
     guitarAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (proc.apvts, "guitar", guitarBox);
     outputAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (proc.apvts, "output", outputBox);
 
@@ -268,7 +272,7 @@ void Fusion250Editor::timerCallback()
     if (lead != leadOn) { leadOn = lead; repaint(); }
     channelBtn.setButtonText (leadOn ? "LEAD" : "CLEAN");
     const auto ir = proc.getIrName();
-    irLabel.setText (ir.isEmpty() ? "No IR loaded (built-in cab)" : ir, juce::dontSendNotification);
+    irLabel.setText (ir.isEmpty() ? "No IR loaded: Output > Built-in Cab uses the Cabinet menu" : "IR: " + ir, juce::dontSendNotification);
 }
 
 void Fusion250Editor::rebuildTextures()
@@ -310,14 +314,14 @@ void Fusion250Editor::paint (juce::Graphics& g)
     g.drawImageAt (tolex, 0, 0);
 
     // nameplate
-    auto np = juce::Rectangle<float> (16 * s, 9 * s, 230 * s, 34 * s);
+    auto np = juce::Rectangle<float> (16 * s, 9 * s, 340 * s, 34 * s);
     g.setColour (oxblood2);
     g.fillRoundedRectangle (np, 5 * s);
     g.setColour (piping);
     g.drawRoundedRectangle (np.reduced (2.5f * s), 4 * s, 1.2f * s);
     g.setFont (engraveFont (24 * s, true));
     g.setColour (cream);
-    g.drawText ("Fusion 250", np.withTrimmedLeft (12 * s), juce::Justification::centredLeft);
+    g.drawText ("Basemental FG 250", np.withTrimmedLeft (12 * s), juce::Justification::centredLeft);
     g.setFont (juce::Font (juce::FontOptions (serif(), 10.5f * s, juce::Font::bold)));
     g.setColour (brassHi);
     g.drawText ("TWO CHANNEL", np.withTrimmedRight (12 * s).withTrimmedTop (2 * s), juce::Justification::centredRight);
@@ -373,8 +377,10 @@ void Fusion250Editor::paint (juce::Graphics& g)
     // footer captions (on tolex, so cream)
     g.setColour (cream.withAlpha (0.8f));
     g.setFont (engraveFont (11.5f * s));
-    g.drawText ("GUITAR VOICE", juce::Rectangle<float> (22 * s, footer.getY() + 14 * s, 170 * s, 14 * s), juce::Justification::centredLeft);
-    g.drawText ("OUTPUT", juce::Rectangle<float> (207 * s, footer.getY() + 14 * s, 170 * s, 14 * s), juce::Justification::centredLeft);
+    const std::pair<const char*, juce::Component*> caps[] = { { "GUITAR VOICE", &guitarBox }, { "CABINET", &cabBox },
+                                                              { "MIC", &micBox }, { "OUTPUT", &outputBox } };
+    for (auto& [text, comp] : caps)
+        g.drawText (text, juce::Rectangle<float> ((float) comp->getX() + 2 * s, (float) comp->getY() - 16 * s, 200 * s, 14 * s), juce::Justification::centredLeft);
     for (int i = 11; i < 13; ++i)
     {
         const auto b = knobs[(size_t) i].slider->getBounds().toFloat();
@@ -411,12 +417,14 @@ void Fusion250Editor::resized()
     const int revCx = x0 + 5 * colW + colW / 2;
     reverbBtn.setBounds (revCx - S (46), cleanBand.getCentreY() - S (16), S (92), S (32));
 
-    const int fy = footer.getY() + S (30);
-    guitarBox.setBounds (S (20), fy, S (170), S (28));
-    outputBox.setBounds (S (205), fy, S (170), S (28));
-    padBtn.setBounds (S (390), fy, S (64), S (28));
-    irBtn.setBounds (S (470), fy, S (110), S (28));
-    irLabel.setBounds (S (590), fy, S (170), S (28));
+    const int fy = footer.getY() + S (26), fy2 = footer.getY() + S (62);
+    guitarBox.setBounds (S (20), fy, S (200), S (26));
+    cabBox.setBounds (S (230), fy, S (170), S (26));
+    micBox.setBounds (S (410), fy, S (130), S (26));
+    outputBox.setBounds (S (550), fy, S (170), S (26));
+    irLabel.setBounds (S (20), fy2, S (520), S (26));
+    padBtn.setBounds (S (550), fy2, S (64), S (26));
+    irBtn.setBounds (S (620), fy2, S (100), S (26));
 
     auto smallKnob = [&] (Knob& k, int cx)
     {

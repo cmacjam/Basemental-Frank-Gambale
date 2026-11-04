@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Fusion250 VERSION 1.0.0 LANGUAGES C CXX)
+project(Fusion250 VERSION 1.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -29,9 +29,9 @@ if(AAX_SDK_PATH)
 endif()
 
 juce_add_plugin(Fusion250
-    PRODUCT_NAME            "Fusion 250"
-    COMPANY_NAME            "Fusion Audio"
-    BUNDLE_ID               com.fusionaudio.fusion250
+    PRODUCT_NAME            "Basemental FG 250"
+    COMPANY_NAME            "Basemental"
+    BUNDLE_ID               com.basemental.fg250
     PLUGIN_MANUFACTURER_CODE Fsna
     PLUGIN_CODE             F250
     FORMATS                 ${FUSION_FORMATS}
@@ -44,7 +44,7 @@ juce_add_plugin(Fusion250
     VST3_CATEGORIES         Fx Distortion
     AU_MAIN_TYPE            kAudioUnitType_Effect
     AAX_CATEGORY            AAX_ePlugInCategory_Harmonic
-    LV2URI                  "https://fusionaudio.example/plugins/fusion250")
+    LV2URI                  "https://basemental.example/plugins/fg250")
 
 target_sources(Fusion250 PRIVATE
     Source/PluginProcessor.cpp
@@ -71,6 +71,8 @@ target_link_libraries(Fusion250
 add_executable(render_test tests/render_test.cpp)
 target_include_directories(render_test PRIVATE Source)
 add_executable(tuner_test tests/tuner_test.cpp)
+add_executable(tuner_stress_test tests/tuner_stress_test.cpp)
+target_include_directories(tuner_stress_test PRIVATE Source)
 target_include_directories(tuner_test PRIVATE Source)
 
 # ---- optional end-to-end GUI/tuner test (links the real plug-in code) ---------

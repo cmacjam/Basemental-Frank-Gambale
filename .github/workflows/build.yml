@@ -1,9 +1,12 @@
-name: Build Fusion 250
+name: Build Basemental FG 250
 
 on:
   push:
   pull_request:
   workflow_dispatch:
+
+env:
+  FUSION_VERSION: "1.1.0"
 
 jobs:
   build:
@@ -19,7 +22,7 @@ jobs:
             cmake_extra: ""
           - name: Linux
             os: ubuntu-22.04
-            cmake_extra: ""
+            cmake_extra: -DFUSION_GUI_TEST=ON
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
 
@@ -32,7 +35,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build libasound2-dev libjack-jackd2-dev \
             libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev \
-            libfreetype6-dev libfontconfig1-dev libgl1-mesa-dev
+            libfreetype6-dev libfontconfig1-dev libgl1-mesa-dev xvfb
 
       - name: Configure
         shell: bash
@@ -40,35 +43,85 @@ jobs:
 
       - name: Build
         shell: bash
-        run: cmake --build build --config Release --parallel 4 --target Fusion250_All render_test tuner_test
+        run: |
+          TARGETS="Fusion250_All render_test tuner_test tuner_stress_test"
+          [ "$RUNNER_OS" = "Linux" ] && TARGETS="$TARGETS gui_snapshot"
+          cmake --build build --config Release --parallel 4 --target $TARGETS
 
-      - name: DSP test
+      - name: DSP and tuner tests
         shell: bash
         run: |
-          if [ -f build/Release/render_test.exe ]; then ./build/Release/render_test.exe . && ./build/Release/tuner_test.exe; else ./build/render_test . && ./build/tuner_test; fi
+          B=build; [ -d build/Release ] && [ -f build/Release/render_test.exe ] && B=build/Release
+          X=""; [ "$RUNNER_OS" = "Windows" ] && X=".exe"
+          "$B/render_test$X" .
+          "$B/tuner_test$X"
+          "$B/tuner_stress_test$X"
 
-      - name: Package
-        shell: bash
-        run: |
-          mkdir -p dist
-          ART=build/Fusion250_artefacts/Release
-          cp -R "$ART/VST3/"*.vst3 dist/
-          [ -d "$ART/AU" ]  && cp -R "$ART/AU/"*.component dist/ || true
-          [ -d "$ART/LV2" ] && cp -R "$ART/LV2/"*.lv2 dist/ || true
-          [ -d "$ART/Standalone" ] && cp -R "$ART/Standalone/"* dist/ || true
-          cp JSFX/Fusion250.jsfx dist/
-          cp README.md dist/
+      - name: End-to-end tuner test in the real plug-in (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a ./build/gui_snapshot .
 
-      - name: Validate AU (macOS)
+      # ---------------------------------------------------------------- macOS
+      - name: Build macOS installer
         if: runner.os == 'macOS'
-        continue-on-error: true
+        run: bash installer/mac/build-pkg.sh build/Fusion250_artefacts/Release "$FUSION_VERSION"
+
+      - name: Test macOS installer (install + auval, like Logic)
+        if: runner.os == 'macOS'
         run: |
-          mkdir -p ~/Library/Audio/Plug-Ins/Components
-          cp -R "dist/Fusion 250.component" ~/Library/Audio/Plug-Ins/Components/
+          sudo installer -pkg "dist/BasementalFG250-$FUSION_VERSION-macOS-Installer.pkg" -target /
+          test -d "/Library/Audio/Plug-Ins/Components/Basemental FG 250.component"
+          test -d "/Library/Audio/Plug-Ins/VST3/Basemental FG 250.vst3"
           killall -9 AudioComponentRegistrar || true
-          auval -v aufx F250 Fsna
+          auval -v aufx F250 Fsna | tee auval.log
+          grep -q "AU VALIDATION SUCCEEDED" auval.log
+
+      # -------------------------------------------------------------- Windows
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
+          & $iscc "/DAppVersion=$env:FUSION_VERSION" "/DArtDir=$pwd\build\Fusion250_artefacts\Release" "/DSrcDir=$pwd" installer\windows\Fusion250.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Test Windows installer (silent install + uninstall)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist\BasementalFG250-*-Windows-Setup.exe | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait
+          $vst = "$env:CommonProgramFiles\VST3\Basemental FG 250.vst3"
+          if (-not (Test-Path $vst)) { Write-Error "VST3 not installed"; exit 1 }
+          if (-not (Test-Path "$env:ProgramFiles\Basemental FG 250\Basemental FG 250.exe")) { Write-Error "Standalone not installed"; exit 1 }
+          Write-Host "Installed OK: $vst"
+          & "$env:ProgramFiles\Basemental FG 250\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES | Out-Null
+          Start-Sleep -Seconds 5
+          if (Test-Path $vst) { Write-Error "Uninstall left the VST3 behind"; exit 1 }
+          Write-Host "Uninstall OK"
+
+      # ---------------------------------------------------------------- Linux
+      - name: Build and test Linux installer
+        if: runner.os == 'Linux'
+        run: |
+          P="BasementalFG250-$FUSION_VERSION-Linux"
+          mkdir -p "dist/$P"
+          ART=build/Fusion250_artefacts/Release
+          cp -R "$ART/VST3/Basemental FG 250.vst3" "$ART/LV2/Basemental FG 250.lv2" "dist/$P/"
+          cp installer/linux/install.sh README.md "dist/$P/"
+          chmod +x "dist/$P/install.sh"
+          tar -C dist -czf "dist/$P.tar.gz" "$P"
+          bash "dist/$P/install.sh"
+          test -f "$HOME/.vst3/Basemental FG 250.vst3/Contents/x86_64-linux/Basemental FG 250.so"
+          bash "dist/$P/install.sh" --uninstall
+          rm -rf "dist/$P"
+
+      - name: Add REAPER JSFX and README
+        shell: bash
+        run: cp JSFX/Fusion250.jsfx README.md dist/
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Fusion250-${{ matrix.name }}
+          name: BasementalFG250-${{ matrix.name }}-Installer
           path: dist

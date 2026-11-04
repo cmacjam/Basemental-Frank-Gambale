@@ -1,7 +1,7 @@
-desc: Fusion 250 - Two-Channel Fusion Amp
+desc: Basemental FG 250 - Two-Channel Fusion Amp
 //tags: guitar amp amplifier distortion reverb
-//author: Fusion Audio
-//version: 1.0
+//author: Basemental
+//version: 1.1
 //
 // Signal chain follows the FG Little 250 Amplitude manual's block diagram:
 //   Input -> CLEAN (Gain > Tones > Level) / LEAD (Gain > Tones > Level)
@@ -22,11 +22,13 @@ slider10:l_high=5<0,10,0.01>Lead High
 slider11:l_level=5<0,10,0.01>Lead Level
 slider12:reverb=2.5<0,10,0.01>Reverb
 slider13:rev_on=1<0,1,1{Off,On}>Reverb (footswitch)
-slider14:guitar=0<0,3,1{Off (your guitar),FG1 Neck,FG1 Bridge,FG2}>Guitar Voice
+slider14:guitar=0<0,11,1{Off (your guitar),FG1 Neck,FG1 Bridge,FG2,Single-Coil Neck,Single-Coil Bridge,Twang Bridge (single coil),Vintage Humbucker Neck,Hot Humbucker Bridge,Archtop Hollowbody (jazz),Semi-Hollow,Superstrat HSS Bridge}>Guitar Voice
 slider15:outmode=1<0,2,1{Pre Out (no cab),Built-in Cab,Power only (add ReaVerb IR after)}>Output
 slider16:pad=0<0,1,1{0 dB,-6 dB}>Pre Out Pad
 slider17:in_db=0<-12,12,0.1>Input Trim (dB)
-slider18:out_db=0<-24,12,0.1>Output (dB)
+slider18:out_db=0<-24,12,0.1>Master (dB)
+slider19:cabinet=0<0,7,1{Fusion 1x12,1x12 Open Back,2x12 Closed Back,4x12 Closed Back,1x15 Jazz,2x10 Vintage Open,1x12 Jazz Combo,1x8 Small Combo}>Cabinet
+slider20:mic=0<0,2,1{On-Axis,Off-Axis,Close (proximity)}>Mic Position
 
 in_pin:left
 in_pin:right
@@ -95,13 +97,7 @@ l_dc.bq_hp(srate, 20, 0.707);
 l_post1.bq_lp(srate, 5800, 0.6);
 l_post2.bq_lp(srate, 9500, 0.707);
 
-// cab sim (both sides)
-cabL1.bq_hp(srate,75,0.9);   cabR1.bq_hp(srate,75,0.9);
-cabL2.bq_pk(srate,110,1.2,4); cabR2.bq_pk(srate,110,1.2,4);
-cabL3.bq_pk(srate,450,1,-2.5); cabR3.bq_pk(srate,450,1,-2.5);
-cabL4.bq_pk(srate,2400,1.4,3); cabR4.bq_pk(srate,2400,1.4,3);
-cabL5.bq_lp(srate,5200,0.7); cabR5.bq_lp(srate,5200,0.7);
-cabL6.bq_lp(srate,6500,0.55); cabR6.bq_lp(srate,6500,0.55);
+
 
 // reverb
 rv_fb = 0.83; rv_damp = 0.35;
@@ -131,9 +127,30 @@ l_th.bq_hs(srate, 2800, (l_high-5)*3, 0.6);
 
 // guitar voice
 gv1.bq_id(); gv2.bq_id(); gv3.bq_id();
-guitar == 1 ? ( gv1.bq_pk(srate,220,0.8,2); gv2.bq_pk(srate,2300,1.8,1.5); gv3.bq_hs(srate,3500,-3,0.707); );
-guitar == 2 ? ( gv1.bq_ls(srate,150,-1.5,0.707); gv2.bq_pk(srate,3200,1.8,2.5); gv3.bq_hs(srate,6000,1,0.707); );
-guitar == 3 ? ( gv1.bq_ls(srate,120,-2,0.707); gv2.bq_pk(srate,4000,2,3); gv3.bq_hs(srate,5000,1.5,0.707); );
+guitar == 1 ? ( gv1.bq_pk(srate,220,0.8,2.0); gv2.bq_pk(srate,2300,1.8,1.5); gv3.bq_hs(srate,3500,-3.0,0.707); );
+guitar == 2 ? ( gv1.bq_ls(srate,150,-1.5,0.707); gv2.bq_pk(srate,3200,1.8,2.5); gv3.bq_hs(srate,6000,1.0,0.707); );
+guitar == 3 ? ( gv1.bq_ls(srate,120,-2.0,0.707); gv2.bq_pk(srate,4000,2.0,3.0); gv3.bq_hs(srate,5000,1.5,0.707); );
+guitar == 4 ? ( gv1.bq_ls(srate,150,-1.5,0.707); gv2.bq_pk(srate,2800,1.5,2.0); gv3.bq_hs(srate,4500,2.0,0.707); );
+guitar == 5 ? ( gv1.bq_ls(srate,200,-3.0,0.707); gv2.bq_pk(srate,3500,1.8,3.0); gv3.bq_hs(srate,6000,1.0,0.707); );
+guitar == 6 ? ( gv1.bq_ls(srate,180,-2.5,0.707); gv2.bq_pk(srate,2200,1.0,2.0); gv3.bq_pk(srate,4500,2.0,3.0); );
+guitar == 7 ? ( gv1.bq_pk(srate,250,0.8,2.0); gv2.bq_pk(srate,1800,1.0,-1.0); gv3.bq_hs(srate,3000,-3.5,0.707); );
+guitar == 8 ? ( gv1.bq_pk(srate,800,0.9,2.5); gv2.bq_pk(srate,3000,1.2,1.5); gv3.bq_hs(srate,5000,-1.5,0.707); );
+guitar == 9 ? ( gv1.bq_pk(srate,180,0.8,3.0); gv2.bq_pk(srate,1000,1.0,-1.0); gv3.bq_hs(srate,2500,-6.0,0.707); );
+guitar == 10 ? ( gv1.bq_pk(srate,200,0.8,2.0); gv2.bq_pk(srate,2500,1.2,1.0); gv3.bq_hs(srate,4000,-2.0,0.707); );
+guitar == 11 ? ( gv1.bq_ls(srate,150,-1.0,0.707); gv2.bq_pk(srate,900,1.0,2.0); gv3.bq_pk(srate,3800,1.5,2.5); );
+// cabinets + mic (same tables as Source/AmpCore.h)
+cabL1.bq_id(); cabR1.bq_id(); cabL2.bq_id(); cabR2.bq_id(); cabL3.bq_id(); cabR3.bq_id(); cabL4.bq_id(); cabR4.bq_id(); cabL5.bq_id(); cabR5.bq_id(); cabL6.bq_id(); cabR6.bq_id(); cabL7.bq_id(); cabR7.bq_id(); cabL8.bq_id(); cabR8.bq_id(); 
+cabinet == 0 ? ( cabL1.bq_hp(srate,75,0.9); cabR1.bq_hp(srate,75,0.9); cabL2.bq_pk(srate,110,1.2,4); cabR2.bq_pk(srate,110,1.2,4); cabL3.bq_pk(srate,450,1.0,-2.5); cabR3.bq_pk(srate,450,1.0,-2.5); cabL4.bq_pk(srate,2400,1.4,3); cabR4.bq_pk(srate,2400,1.4,3); cabL5.bq_lp(srate,5200,0.7); cabR5.bq_lp(srate,5200,0.7); cabL6.bq_lp(srate,6500,0.55); cabR6.bq_lp(srate,6500,0.55); cabgain = 0.9; );
+cabinet == 1 ? ( cabL1.bq_hp(srate,70,0.7); cabR1.bq_hp(srate,70,0.7); cabL2.bq_pk(srate,120,1.0,2.5); cabR2.bq_pk(srate,120,1.0,2.5); cabL3.bq_pk(srate,300,1.0,-1); cabR3.bq_pk(srate,300,1.0,-1); cabL4.bq_pk(srate,1800,1.2,2); cabR4.bq_pk(srate,1800,1.2,2); cabL5.bq_pk(srate,3500,2.0,3); cabR5.bq_pk(srate,3500,2.0,3); cabL6.bq_lp(srate,6000,0.7); cabR6.bq_lp(srate,6000,0.7); cabL7.bq_lp(srate,8000,0.6); cabR7.bq_lp(srate,8000,0.6); cabgain = 0.85; );
+cabinet == 2 ? ( cabL1.bq_hp(srate,80,0.8); cabR1.bq_hp(srate,80,0.8); cabL2.bq_pk(srate,105,1.1,4); cabR2.bq_pk(srate,105,1.1,4); cabL3.bq_pk(srate,400,1.0,-2.5); cabR3.bq_pk(srate,400,1.0,-2.5); cabL4.bq_pk(srate,1500,1.0,1); cabR4.bq_pk(srate,1500,1.0,1); cabL5.bq_pk(srate,2700,1.5,3.5); cabR5.bq_pk(srate,2700,1.5,3.5); cabL6.bq_lp(srate,5000,0.7); cabR6.bq_lp(srate,5000,0.7); cabL7.bq_lp(srate,6000,0.55); cabR7.bq_lp(srate,6000,0.55); cabgain = 0.8; );
+cabinet == 3 ? ( cabL1.bq_hp(srate,70,0.9); cabR1.bq_hp(srate,70,0.9); cabL2.bq_pk(srate,95,1.3,5); cabR2.bq_pk(srate,95,1.3,5); cabL3.bq_pk(srate,500,0.9,-3); cabR3.bq_pk(srate,500,0.9,-3); cabL4.bq_pk(srate,2200,1.4,3); cabR4.bq_pk(srate,2200,1.4,3); cabL5.bq_pk(srate,3800,2.5,2); cabR5.bq_pk(srate,3800,2.5,2); cabL6.bq_lp(srate,4800,0.7); cabR6.bq_lp(srate,4800,0.7); cabL7.bq_lp(srate,5500,0.55); cabR7.bq_lp(srate,5500,0.55); cabgain = 0.75; );
+cabinet == 4 ? ( cabL1.bq_hp(srate,55,0.7); cabR1.bq_hp(srate,55,0.7); cabL2.bq_pk(srate,90,1.0,3); cabR2.bq_pk(srate,90,1.0,3); cabL3.bq_pk(srate,250,1.0,1); cabR3.bq_pk(srate,250,1.0,1); cabL4.bq_pk(srate,2000,1.0,-1); cabR4.bq_pk(srate,2000,1.0,-1); cabL5.bq_lp(srate,4200,0.7); cabR5.bq_lp(srate,4200,0.7); cabL6.bq_lp(srate,5000,0.55); cabR6.bq_lp(srate,5000,0.55); cabgain = 0.9; );
+cabinet == 5 ? ( cabL1.bq_hp(srate,90,0.7); cabR1.bq_hp(srate,90,0.7); cabL2.bq_pk(srate,150,1.0,1.5); cabR2.bq_pk(srate,150,1.0,1.5); cabL3.bq_pk(srate,1200,1.0,2); cabR3.bq_pk(srate,1200,1.0,2); cabL4.bq_pk(srate,2800,1.5,3); cabR4.bq_pk(srate,2800,1.5,3); cabL5.bq_lp(srate,6500,0.7); cabR5.bq_lp(srate,6500,0.7); cabL6.bq_lp(srate,9000,0.6); cabR6.bq_lp(srate,9000,0.6); cabgain = 0.85; );
+cabinet == 6 ? ( cabL1.bq_hp(srate,75,0.8); cabR1.bq_hp(srate,75,0.8); cabL2.bq_pk(srate,130,1.0,3); cabR2.bq_pk(srate,130,1.0,3); cabL3.bq_pk(srate,450,1.0,-1.5); cabR3.bq_pk(srate,450,1.0,-1.5); cabL4.bq_pk(srate,2500,1.2,1.5); cabR4.bq_pk(srate,2500,1.2,1.5); cabL5.bq_lp(srate,4500,0.7); cabR5.bq_lp(srate,4500,0.7); cabL6.bq_lp(srate,5500,0.55); cabR6.bq_lp(srate,5500,0.55); cabgain = 0.85; );
+cabinet == 7 ? ( cabL1.bq_hp(srate,140,0.8); cabR1.bq_hp(srate,140,0.8); cabL2.bq_pk(srate,900,0.8,3); cabR2.bq_pk(srate,900,0.8,3); cabL3.bq_pk(srate,2500,1.2,3); cabR3.bq_pk(srate,2500,1.2,3); cabL4.bq_lp(srate,5000,0.8); cabR4.bq_lp(srate,5000,0.8); cabgain = 0.8; );
+micL1.bq_id(); micL2.bq_id(); micR1.bq_id(); micR2.bq_id();
+mic == 1 ? ( micL1.bq_hs(srate,3000,-4,0.7); micR1.bq_hs(srate,3000,-4,0.7); micL2.bq_pk(srate,5000,1,-2); micR2.bq_pk(srate,5000,1,-2); );
+mic == 2 ? ( micL1.bq_ls(srate,200,3,0.7); micR1.bq_ls(srate,200,3,0.7); micL2.bq_pk(srate,800,0.8,-1); micR2.bq_pk(srate,800,0.8,-1); );
 
 cg_t = db2lin(-6 + 2.4*c_gain);
 cl_t = level_gain(c_level);
@@ -204,8 +221,10 @@ outmode > 0 ? (
   L = softsat(L * 0.8) / 0.8;
   R = softsat(R * 0.8) / 0.8;
   outmode == 1 ? (
-    L = cabL6.bq(cabL5.bq(cabL4.bq(cabL3.bq(cabL2.bq(cabL1.bq(L)))))) * 0.9;
-    R = cabR6.bq(cabR5.bq(cabR4.bq(cabR3.bq(cabR2.bq(cabR1.bq(R)))))) * 0.9;
+    L = cabL8.bq(cabL7.bq(cabL6.bq(cabL5.bq(cabL4.bq(cabL3.bq(cabL2.bq(cabL1.bq(L))))))));
+    R = cabR8.bq(cabR7.bq(cabR6.bq(cabR5.bq(cabR4.bq(cabR3.bq(cabR2.bq(cabR1.bq(R))))))));
+    L = micL2.bq(micL1.bq(L)) * cabgain;
+    R = micR2.bq(micR1.bq(R)) * cabgain;
   );
 );
 

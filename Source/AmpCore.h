@@ -1,6 +1,6 @@
 #pragma once
 // =============================================================================
-//  Fusion 250 — DSP core (header-only, no JUCE dependency)
+//  Basemental FG 250 — DSP core (header-only, no JUCE dependency)
 //
 //  Signal chain follows the FG Little 250 Amplitude manual's block diagram:
 //
@@ -313,43 +313,120 @@ struct Reverb
     }
 };
 
-// ======================================================= built-in cabinet sim
+// ----------------------------------------------- table-driven filter chains
+enum FType { NONE = 0, HP, LP, PK, LS, HS };
+struct FSpec { FType t; double f, q, db; };
+
+inline void applySpec (Biquad& b, double fs, const FSpec& s)
+{
+    switch (s.t)
+    {
+        case HP: b.highpass (fs, s.f, s.q); break;
+        case LP: b.lowpass (fs, s.f, s.q); break;
+        case PK: b.peak (fs, s.f, s.q, s.db); break;
+        case LS: b.lowShelf (fs, s.f, s.db, s.q); break;
+        case HS: b.highShelf (fs, s.f, s.db, s.q); break;
+        default: b.identity(); break;
+    }
+}
+
+// ======================================================= built-in cabinets
+// [VOICING] generic speaker/cabinet curves (EQ models, not measured IRs).
+// For a specific real cabinet, load its IR with Output = User IR.
+static constexpr int kNumCabs = 8;
+inline const char* cabName (int i)
+{
+    static const char* n[kNumCabs] = { "Fusion 1x12", "1x12 Open Back", "2x12 Closed Back", "4x12 Closed Back",
+                                       "1x15 Jazz", "2x10 Vintage Open", "1x12 Jazz Combo", "1x8 Small Combo" };
+    return n[std::min (std::max (i, 0), kNumCabs - 1)];
+}
+
 struct CabSim
 {
-    Biquad f[6];
-    void prepare (double fs)
+    static constexpr int N = 8;
+    Biquad f[N], mic[2];
+    double gain = 0.9;
+    int model = -1, micMode = -1;
+
+    void setup (double fs, int m, int micPos)
     {
-        // [VOICING] generic closed-back 12" character
-        f[0].highpass (fs, 75, 0.9);
-        f[1].peak (fs, 110, 1.2, 4.0);      // low resonance
-        f[2].peak (fs, 450, 1.0, -2.5);     // de-box
-        f[3].peak (fs, 2400, 1.4, 3.0);     // presence / cone peak
-        f[4].lowpass (fs, 5200, 0.7);
-        f[5].lowpass (fs, 6500, 0.55);
-        reset();
+        static const FSpec tbl[kNumCabs][N] = {
+            // Fusion 1x12: tight closed-back, forward upper mids (original default)
+            { { HP, 75, 0.9, 0 }, { PK, 110, 1.2, 4 }, { PK, 450, 1.0, -2.5 }, { PK, 2400, 1.4, 3 }, { LP, 5200, 0.7, 0 }, { LP, 6500, 0.55, 0 } },
+            // 1x12 open back: looser lows, sparkly top
+            { { HP, 70, 0.7, 0 }, { PK, 120, 1.0, 2.5 }, { PK, 300, 1.0, -1 }, { PK, 1800, 1.2, 2 }, { PK, 3500, 2.0, 3 }, { LP, 6000, 0.7, 0 }, { LP, 8000, 0.6, 0 } },
+            // 2x12 closed back: thick, mid-forward
+            { { HP, 80, 0.8, 0 }, { PK, 105, 1.1, 4 }, { PK, 400, 1.0, -2.5 }, { PK, 1500, 1.0, 1 }, { PK, 2700, 1.5, 3.5 }, { LP, 5000, 0.7, 0 }, { LP, 6000, 0.55, 0 } },
+            // 4x12 closed back: big low thump, darker top
+            { { HP, 70, 0.9, 0 }, { PK, 95, 1.3, 5 }, { PK, 500, 0.9, -3 }, { PK, 2200, 1.4, 3 }, { PK, 3800, 2.5, 2 }, { LP, 4800, 0.7, 0 }, { LP, 5500, 0.55, 0 } },
+            // 1x15 jazz: deep, round, soft highs
+            { { HP, 55, 0.7, 0 }, { PK, 90, 1.0, 3 }, { PK, 250, 1.0, 1 }, { PK, 2000, 1.0, -1 }, { LP, 4200, 0.7, 0 }, { LP, 5000, 0.55, 0 } },
+            // 2x10 vintage open: lighter lows, chimey
+            { { HP, 90, 0.7, 0 }, { PK, 150, 1.0, 1.5 }, { PK, 1200, 1.0, 2 }, { PK, 2800, 1.5, 3 }, { LP, 6500, 0.7, 0 }, { LP, 9000, 0.6, 0 } },
+            // 1x12 jazz combo (sealed): warm, focused, smooth top
+            { { HP, 75, 0.8, 0 }, { PK, 130, 1.0, 3 }, { PK, 450, 1.0, -1.5 }, { PK, 2500, 1.2, 1.5 }, { LP, 4500, 0.7, 0 }, { LP, 5500, 0.55, 0 } },
+            // 1x8 small combo: boxy, little low end
+            { { HP, 140, 0.8, 0 }, { PK, 900, 0.8, 3 }, { PK, 2500, 1.2, 3 }, { LP, 5000, 0.8, 0 } },
+        };
+        static const double gains[kNumCabs] = { 0.9, 0.85, 0.8, 0.75, 0.9, 0.85, 0.85, 0.8 };
+        m = std::min (std::max (m, 0), kNumCabs - 1);
+        if (m != model)
+        {
+            for (int i = 0; i < N; ++i) applySpec (f[i], fs, tbl[m][i]);
+            gain = gains[m];
+            model = m;
+        }
+        if (micPos != micMode)
+        {
+            if (micPos == 1) { mic[0].highShelf (fs, 3000, -4.0, 0.7); mic[1].peak (fs, 5000, 1.0, -2.0); }  // off-axis: darker
+            else if (micPos == 2) { mic[0].lowShelf (fs, 200, 3.0, 0.7); mic[1].peak (fs, 800, 0.8, -1.0); } // close/proximity
+            else { mic[0].identity(); mic[1].identity(); }                                                   // on-axis
+            micMode = micPos;
+        }
     }
-    void reset() { for (auto& b : f) b.reset(); }
-    inline double process (double x) { for (auto& b : f) x = b.process (x); return x * 0.9; }
+    void reset() { for (auto& b : f) b.reset(); for (auto& b : mic) b.reset(); }
+    inline double process (double x)
+    {
+        for (auto& b : f) x = b.process (x);
+        x = mic[1].process (mic[0].process (x));
+        return x * gain;
+    }
 };
 
 // ================================================== guitar voicing (approx.)
+// Gentle EQ tilts that nudge a DI'd guitar toward a pickup/body character.
+// They can't turn one guitar into another; leave Off for your guitar's own sound.
+static constexpr int kNumVoices = 12;
+inline const char* voiceName (int i)
+{
+    static const char* n[kNumVoices] = { "Off (your guitar)", "FG1 Neck", "FG1 Bridge", "FG2",
+                                         "Single-Coil Neck", "Single-Coil Bridge", "Twang Bridge (single coil)",
+                                         "Vintage Humbucker Neck", "Hot Humbucker Bridge", "Archtop Hollowbody (jazz)",
+                                         "Semi-Hollow", "Superstrat HSS Bridge" };
+    return n[std::min (std::max (i, 0), kNumVoices - 1)];
+}
+
 struct GuitarVoice
 {
     Biquad f[3]; int mode = 0;
     void setup (double fs, int m)
     {
-        mode = m;
-        for (auto& b : f) b.identity();
-        switch (m)
-        {
-            case 1: // FG1 neck: chambered mahogany, warm humbucker
-                f[0].peak (fs, 220, 0.8, 2.0); f[1].peak (fs, 2300, 1.8, 1.5); f[2].highShelf (fs, 3500, -3.0); break;
-            case 2: // FG1 bridge: Beryllium humbucker
-                f[0].lowShelf (fs, 150, -1.5); f[1].peak (fs, 3200, 1.8, 2.5); f[2].highShelf (fs, 6000, 1.0); break;
-            case 3: // FG2: alder body, Twinblade / Beryllium, brighter
-                f[0].lowShelf (fs, 120, -2.0); f[1].peak (fs, 4000, 2.0, 3.0); f[2].highShelf (fs, 5000, 1.5); break;
-            default: break;
-        }
+        static const FSpec tbl[kNumVoices][3] = {
+            { },
+            { { PK, 220, 0.8, 2.0 }, { PK, 2300, 1.8, 1.5 }, { HS, 3500, 0.707, -3.0 } },   // FG1 neck: chambered mahogany, warm
+            { { LS, 150, 0.707, -1.5 }, { PK, 3200, 1.8, 2.5 }, { HS, 6000, 0.707, 1.0 } },  // FG1 bridge: Beryllium humbucker
+            { { LS, 120, 0.707, -2.0 }, { PK, 4000, 2.0, 3.0 }, { HS, 5000, 0.707, 1.5 } },  // FG2: alder, brighter
+            { { LS, 150, 0.707, -1.5 }, { PK, 2800, 1.5, 2.0 }, { HS, 4500, 0.707, 2.0 } },  // single-coil neck
+            { { LS, 200, 0.707, -3.0 }, { PK, 3500, 1.8, 3.0 }, { HS, 6000, 0.707, 1.0 } },  // single-coil bridge
+            { { LS, 180, 0.707, -2.5 }, { PK, 2200, 1.0, 2.0 }, { PK, 4500, 2.0, 3.0 } },    // twang bridge
+            { { PK, 250, 0.8, 2.0 }, { PK, 1800, 1.0, -1.0 }, { HS, 3000, 0.707, -3.5 } },   // vintage humbucker neck
+            { { PK, 800, 0.9, 2.5 }, { PK, 3000, 1.2, 1.5 }, { HS, 5000, 0.707, -1.5 } },    // hot humbucker bridge
+            { { PK, 180, 0.8, 3.0 }, { PK, 1000, 1.0, -1.0 }, { HS, 2500, 0.707, -6.0 } },   // archtop hollowbody
+            { { PK, 200, 0.8, 2.0 }, { PK, 2500, 1.2, 1.0 }, { HS, 4000, 0.707, -2.0 } },    // semi-hollow
+            { { LS, 150, 0.707, -1.0 }, { PK, 900, 1.0, 2.0 }, { PK, 3800, 1.5, 2.5 } },     // superstrat HSS bridge
+        };
+        mode = std::min (std::max (m, 0), kNumVoices - 1);
+        for (int i = 0; i < 3; ++i) applySpec (f[i], fs, tbl[mode][i]);
     }
     void reset() { for (auto& b : f) b.reset(); }
     inline double process (double x) { if (mode == 0) return x; for (auto& b : f) x = b.process (x); return x; }
@@ -363,7 +440,9 @@ struct Params
     float lead[5]  = { 6, 4.5f, 6.5f, 5, 5 };
     float reverb = 2.5f;                      // 0..10
     bool reverbOn = true;                     // footswitch
-    int guitar = 0;                           // 0 Off, 1 FG1 neck, 2 FG1 bridge, 3 FG2
+    int guitar = 0;                           // index into voiceName()
+    int cabinet = 0;                          // index into cabName()
+    int mic = 0;                              // 0 on-axis, 1 off-axis, 2 close (proximity)
     int output = 1;                           // 0 Pre Out, 1 Power + built-in cab, 2 Power only (external IR)
     bool pad6 = false;                        // Pre Out 0/-6 dB
     float inDb = 0, outDb = 0;
@@ -377,7 +456,8 @@ public:
         fs = sampleRate;
         clean.prepare (fs); lead.prepare (fs);
         revL.prepare (fs, 0); revR.prepare (fs, 23);
-        for (auto& c : cab) c.prepare (fs);
+        for (auto& c : cab) { c.model = -1; c.micMode = -1; c.setup (fs, p.cabinet, p.mic); c.reset(); }
+        voice.setup (fs, p.guitar); voice.reset();
         xfade.prepare (fs, 15); wet.prepare (fs, 30); outG.prepare (fs, 20); inG.prepare (fs, 20);
         first = true;
         setParams (p);
@@ -395,6 +475,8 @@ public:
         clean.set (p.clean, first);
         lead.set (p.lead, first);
         if (p.guitar != voice.mode) { voice.setup (fs, p.guitar); voice.reset(); }
+        if (p.cabinet != cab[0].model || p.mic != cab[0].micMode)
+            for (auto& c : cab) c.setup (fs, p.cabinet, p.mic);   // filter states kept: no click
         const double w = p.reverbOn ? std::pow (p.reverb / 10.0, 1.5) * 0.9 : 0.0;
         const double o = dbToLin (p.outDb) * ((p.output == 0 && p.pad6) ? 0.5 : 1.0);
         const double x = p.channel ? 1.0 : 0.0, i = dbToLin (p.inDb);
