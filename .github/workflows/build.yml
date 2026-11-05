@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  FUSION_VERSION: "1.1.0"
+  FUSION_VERSION: "1.2.0"
 
 jobs:
   build:
@@ -125,3 +125,39 @@ jobs:
         with:
           name: BasementalFG250-${{ matrix.name }}-Installer
           path: dist
+
+  # Publishing a version tag (e.g. v1.2.0) attaches the tested installers to a
+  # GitHub Release, so anyone can download them without signing in.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Collect installers
+        run: |
+          mkdir release
+          find artifacts -name '*-macOS-Installer.pkg' -exec cp {} release/ \;
+          find artifacts -name '*-Windows-Setup.exe' -exec cp {} release/ \;
+          find artifacts -name '*-Linux.tar.gz' -exec cp {} release/ \;
+          cp "$(find artifacts -name 'Fusion250.jsfx' | head -1)" release/BasementalFG250-REAPER.jsfx
+          ls -la release
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          body: |
+            **Basemental FG 250** two-channel fusion amp with strobe tuner.
+
+            | Download | For |
+            |---|---|
+            | `BasementalFG250-*-macOS-Installer.pkg` | Logic Pro, GarageBand, MainStage (AU) and other Mac DAWs (VST3). Apple Silicon + Intel |
+            | `BasementalFG250-*-Windows-Setup.exe` | Windows DAWs (VST3) + standalone app |
+            | `BasementalFG250-*-Linux.tar.gz` | Linux (VST3 + LV2), run `./install.sh` |
+            | `BasementalFG250-REAPER.jsfx` | REAPER, no install needed |
+
+            Every installer was installed and checked on its own operating system before release (`auval` for the Logic AU).
+            First time on macOS: if it can't verify the developer, open System Settings > Privacy & Security and click **Open Anyway**.

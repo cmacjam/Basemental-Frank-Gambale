@@ -1,10 +1,34 @@
-# Basemental FG 250 — two-channel fusion amp plug-in
+# Basemental FG 250
 
-A guitar amp plug-in modeled on the signal chain of the DV Mark FG Little 250
-Amplitude (Frank Gambale signature), with optional Kiesel FG1/FG2 guitar voicings.
+A two-channel fusion guitar amp plug-in with a built-in strobe tuner, modelled on
+the signal chain of the DV Mark FG Little 250 Amplitude (Frank Gambale signature).
 
-**Formats:** VST3 (Mac/Win/Linux), AU (Mac), LV2 (Linux), Standalone app (all),
-AAX (Pro Tools, needs Avid's SDK), and a REAPER JSFX that runs without compiling.
+![Basemental FG 250](docs/faceplate@2x.png)
+
+## Download
+
+Get the latest installers from the **[Releases page](../../releases/latest)**:
+
+| File | For |
+|---|---|
+| `BasementalFG250-1.2.0-macOS-Installer.pkg` | **Logic Pro**, GarageBand, MainStage (AU) and other Mac DAWs (VST3). Apple Silicon + Intel |
+| `BasementalFG250-1.2.0-Windows-Setup.exe` | Windows DAWs (VST3) and a standalone app |
+| `BasementalFG250-1.2.0-Linux.tar.gz` | Linux (VST3 + LV2): unpack and run `./install.sh` |
+| `BasementalFG250-REAPER.jsfx` | REAPER, no install needed (no tuner) |
+
+In Logic: Audio FX slot > **Audio Units > Basemental > Basemental FG 250**.
+
+## Features
+
+- Two independent channels (Clean / Lead), each with Gain, Low, Mid, High, Level
+- Shared reverb with a stomp footswitch, rocker power switch with blue ON lamp
+- 8 built-in cabinets, 3 mic positions, or load your own cabinet IR
+- 12 guitar voicings (FG1/FG2, single-coil, humbucker, hollowbody...)
+- 9 presets including 8 Gambale-style tones
+- Strobe tuner accurate to better than 0.1 cent: auto/manual note, transposing
+  keys, cent offset, 8 historical temperaments, Gambale-tuning string guide
+- Analogue VU meters for input and output, with peak lights
+- Formats: AU, VST3, LV2, Standalone, REAPER JSFX (AAX with Avid's SDK)
 
 ## Signal chain
 
@@ -28,7 +52,9 @@ Input -> [Guitar Voice] -> CLEAN: Gain -> Low/Mid/High -> Level --+
 | Mic | On-Axis (brightest), Off-Axis (darker, smoother), Close (more low end, proximity effect) |
 | Output | Pre Out (no power amp or cab, like the rear jack), Built-in Cab, or User IR (load any cabinet .wav) |
 | -6 dB | Pre Out pad, same as the hardware switch |
+| Power | Rocker switch; off fades the amp to silence (the tuner keeps working). Blue lamp = on |
 | Input / Master | Input trim and master output (dB) |
+| VU meters | IN (after the Input knob) and OUT. 0 VU = -18 dBFS, ~300 ms VU ballistics. The red peak light latches at 0 dBFS; click to reset |
 
 ### Gambale-style presets
 
@@ -122,13 +148,14 @@ use the VST3/AU for the tuner.
 
 Every push to GitHub builds installers on Apple, Microsoft and Linux cloud
 machines, installs each one there, and checks it (`auval` for the Logic AU).
-Download them from the repository's **Actions** tab > latest run > *Artifacts*:
+Pushing a version tag (`git tag v1.2.0 && git push --tags`) publishes them on the
+**Releases** page. Builds of untagged pushes are under **Actions** > run > *Artifacts*:
 
 | | File | Installs |
 |---|---|---|
-| macOS | `BasementalFG250-1.1.0-macOS-Installer.pkg` | AU to `/Library/Audio/Plug-Ins/Components`, VST3 to `/Library/Audio/Plug-Ins/VST3` (universal: Apple Silicon + Intel) |
-| Windows | `BasementalFG250-1.1.0-Windows-Setup.exe` | VST3 to `C:\Program Files\Common Files\VST3`, standalone app; uninstaller in Settings > Apps |
-| Linux | `BasementalFG250-1.1.0-Linux.tar.gz` | `./install.sh` to `~/.vst3` and `~/.lv2` (`--system`, `--uninstall`) |
+| macOS | `BasementalFG250-1.2.0-macOS-Installer.pkg` | AU to `/Library/Audio/Plug-Ins/Components`, VST3 to `/Library/Audio/Plug-Ins/VST3` (universal: Apple Silicon + Intel) |
+| Windows | `BasementalFG250-1.2.0-Windows-Setup.exe` | VST3 to `C:\Program Files\Common Files\VST3`, standalone app; uninstaller in Settings > Apps |
+| Linux | `BasementalFG250-1.2.0-Linux.tar.gz` | `./install.sh` to `~/.vst3` and `~/.lv2` (`--system`, `--uninstall`) |
 
 The installers aren't signed with a paid Apple/Microsoft developer certificate,
 so the first time:
