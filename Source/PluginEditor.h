@@ -33,18 +33,18 @@ public:
     void paintButton (juce::Graphics&, bool over, bool down) override;
 };
 
-// LED-style peak meter: -60..+3 dBFS, peak hold, latching clip light (click to reset)
+// Analogue VU meter: 0 VU = -18 dBFS, VU ballistics (~300 ms), light purple
+// face with white lettering, latching red peak light (click to reset)
 class LevelMeter : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     explicit LevelMeter (juce::String l) : label (std::move (l)) {}
-    void push (float peakLinear, double dt);
+    void push (float rmsLinear, float peakLinear, double dt);
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override { clipped = false; repaint(); }
 private:
     juce::String label;
-    float levelDb = -100, holdDb = -100;
-    double holdAge = 0;
+    float needle = 0.0f;      // 0..1 across the scale
     bool clipped = false;
 };
 

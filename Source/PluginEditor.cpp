@@ -256,8 +256,8 @@ Fusion250Editor::Fusion250Editor (Fusion250Processor& p) : AudioProcessorEditor 
     addAndMakeVisible (powerBtn);
     addAndMakeVisible (inMeter);
     addAndMakeVisible (outMeter);
-    inMeter.setTooltip ("Input level (after the Input knob). Click to reset the clip light");
-    outMeter.setTooltip ("Output level. Click to reset the clip light");
+    inMeter.setTooltip ("Input VU (0 VU = -18 dBFS, after the Input knob). Red light = peak hit 0 dBFS; click to reset");
+    outMeter.setTooltip ("Output VU (0 VU = -18 dBFS). Red light = peak hit 0 dBFS; click to reset");
     powerAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (proc.apvts, "power", powerBtn);
 
     setResizable (true, true);
@@ -276,8 +276,8 @@ Fusion250Editor::~Fusion250Editor()
 
 void Fusion250Editor::timerCallback()
 {
-    inMeter.push (proc.takeInputPeak(), 1.0 / 30.0);
-    outMeter.push (proc.takeOutputPeak(), 1.0 / 30.0);
+    inMeter.push (proc.takeInputRms(), proc.takeInputPeak(), 1.0 / 30.0);
+    outMeter.push (proc.takeOutputRms(), proc.takeOutputPeak(), 1.0 / 30.0);
     const bool lead = proc.apvts.getRawParameterValue ("channel")->load() > 0.5f;
     if (lead != leadOn) { leadOn = lead; repaint(); }
     channelBtn.setButtonText (leadOn ? "LEAD" : "CLEAN");
@@ -475,27 +475,27 @@ void Fusion250Editor::resized()
 
     // footer: three grouped panels
     const int gy = footer.getY() + S (4), gh = footer.getHeight() - S (10);
-    guitarGroup  = { S (14), gy, S (226), gh };
-    speakerGroup = { S (248), gy, S (478), gh };
-    levelGroup   = { S (734), gy, S (212), gh };
+    guitarGroup  = { S (14), gy, S (186), gh };
+    speakerGroup = { S (206), gy, S (420), gh };
+    levelGroup   = { S (632), gy, S (314), gh };
     const int fy = gy + S (40), fy2 = gy + S (74);
-    guitarBox.setBounds (guitarGroup.getX() + S (12), fy, S (202), S (26));
-    cabBox.setBounds (speakerGroup.getX() + S (12), fy, S (150), S (26));
-    micBox.setBounds (speakerGroup.getX() + S (170), fy, S (118), S (26));
-    outputBox.setBounds (speakerGroup.getX() + S (296), fy, S (170), S (26));
-    padBtn.setBounds (speakerGroup.getX() + S (296), fy2, S (58), S (24));
-    irBtn.setBounds (speakerGroup.getX() + S (360), fy2, S (106), S (24));
-    irLabel.setBounds (speakerGroup.getX() + S (10), fy2, S (280), S (24));
-    inMeter.setBounds (levelGroup.getX() + S (152), gy + S (8), S (24), gh - S (14));
-    outMeter.setBounds (levelGroup.getX() + S (180), gy + S (8), S (24), gh - S (14));
+    guitarBox.setBounds (guitarGroup.getX() + S (10), fy, S (166), S (26));
+    cabBox.setBounds (speakerGroup.getX() + S (10), fy, S (136), S (26));
+    micBox.setBounds (speakerGroup.getX() + S (152), fy, S (106), S (26));
+    outputBox.setBounds (speakerGroup.getX() + S (264), fy, S (146), S (26));
+    padBtn.setBounds (speakerGroup.getX() + S (264), fy2, S (54), S (24));
+    irBtn.setBounds (speakerGroup.getX() + S (322), fy2, S (88), S (24));
+    irLabel.setBounds (speakerGroup.getX() + S (10), fy2, S (248), S (24));
+    inMeter.setBounds (levelGroup.getX() + S (128), gy + S (6), S (88), gh - S (12));
+    outMeter.setBounds (levelGroup.getX() + S (220), gy + S (6), S (88), gh - S (12));
 
     auto smallKnob = [&] (Knob& k, int cx)
     {
         const int sz = S (62);
         k.slider->setBounds (cx - sz / 2, gy + S (38), sz, sz);
     };
-    smallKnob (knobs[11], levelGroup.getX() + S (38));
-    smallKnob (knobs[12], levelGroup.getX() + S (106));
+    smallKnob (knobs[11], levelGroup.getX() + S (34));
+    smallKnob (knobs[12], levelGroup.getX() + S (94));
 }
 
 // =================================================================== rocker
@@ -571,43 +571,96 @@ void FootswitchButton::paintButton (juce::Graphics& g, bool over, bool down)
 }
 
 // ================================================================== meters
-void LevelMeter::push (float peak, double dt)
+namespace
 {
-    const float db = juce::Decibels::gainToDecibels (peak, -100.0f);
-    levelDb = db > levelDb ? db : juce::jmax (db, levelDb - (float) (dt * 26.0));   // ~26 dB/s fall
-    if (db >= holdDb) { holdDb = db; holdAge = 0; }
-    else if ((holdAge += dt) > 1.5) holdDb = juce::jmax (levelDb, holdDb - (float) (dt * 40.0));
-    if (db >= -0.1f) clipped = true;
+    constexpr float kVuRefDbfs = -18.0f;                  // 0 VU
+    float vuToFrac (float vu) { return juce::jlimit (0.0f, 1.0f, std::pow (10.0f, vu / 20.0f) / 1.4125f); }   // voltage scale, +3 VU = full
+}
+
+void LevelMeter::push (float rms, float peak, double dt)
+{
+    const float vu = juce::Decibels::gainToDecibels (rms, -100.0f) - kVuRefDbfs;
+    const float target = vuToFrac (vu);
+    needle += (target - needle) * (1.0f - (float) std::exp (-dt / 0.065));   // ~300 ms to 99%
+    if (peak >= 0.999f) clipped = true;
     repaint();
 }
 
 void LevelMeter::paint (juce::Graphics& g)
 {
-    auto r = getLocalBounds().toFloat();
-    const float labelH = 12.0f, clipH = 7.0f;
-    auto clip = r.removeFromTop (clipH).reduced (2.0f, 0.5f);
-    g.setColour (clipped ? juce::Colour (0xffff3a2a) : juce::Colour (0xff3a1210));
-    g.fillRoundedRectangle (clip, 2.0f);
-    auto lab = r.removeFromBottom (labelH);
-    g.setColour (juce::Colour (0xffe2e5e8).withAlpha (0.8f));
-    g.setFont (juce::FontOptions (juce::Font::getDefaultSerifFontName(), 9.5f, juce::Font::bold));
-    g.drawText (label, lab, juce::Justification::centred);
+    using namespace juce;
+    const auto b = getLocalBounds().toFloat();
+    // black bezel with chrome edge
+    g.setColour (Colours::black);
+    g.fillRoundedRectangle (b, 4.0f);
+    g.setColour (Colour (0xff9aa0a6));
+    g.drawRoundedRectangle (b.reduced (0.5f), 4.0f, 1.0f);
 
-    auto bar = r.reduced (3.0f, 2.0f);
-    g.setColour (juce::Colours::black);
-    g.fillRoundedRectangle (bar.expanded (1.5f), 2.0f);
-    const int segs = 21;
-    const float gap = 1.0f, sh = (bar.getHeight() - gap * (segs - 1)) / segs;
-    auto toFrac = [] (float db) { return juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 63.0f); };   // -60..+3 dB
-    for (int i = 0; i < segs; ++i)
+    // light purple backlit face
+    const auto face = b.reduced (4.0f);
+    ColourGradient fg (Colour (0xffb79ae8), face.getCentreX(), face.getY(), Colour (0xff7e5fc4), face.getCentreX(), face.getBottom(), false);
+    g.setGradientFill (fg);
+    g.fillRoundedRectangle (face, 2.5f);
+    ColourGradient glow (Colours::white.withAlpha (0.25f), face.getCentreX(), face.getBottom(), Colours::transparentWhite, face.getCentreX(), face.getY(), true);
+    g.setGradientFill (glow);
+    g.fillRoundedRectangle (face, 2.5f);
+
+    // arc geometry: pivot below the face
+    const float a0 = degreesToRadians (-48.0f), a1 = degreesToRadians (48.0f);
+    // fit the whole arc + numerals inside the face
+    const float R = jmin (face.getHeight() * 0.86f, (face.getWidth() * 0.5f - 6.0f) / (std::sin (a1) * 1.04f));
+    const Point<float> pivot (face.getCentreX(), face.getY() + 8.0f + R * 1.04f);
+    auto angleAt = [&] (float frac) { return a0 + frac * (a1 - a0); };
+    auto pt = [&] (float ang, float rad) { return pivot + Point<float> (rad * std::sin (ang), -rad * std::cos (ang)); };
+
+    Graphics::ScopedSaveState ss (g);
+    g.reduceClipRegion (face.toNearestInt());
+
+    // scale arc: white, red zone from 0 to +3 VU
+    const float z0 = vuToFrac (0.0f);
+    Path arc;   arc.addCentredArc (pivot.x, pivot.y, R * 0.80f, R * 0.80f, 0, a0, angleAt (z0), true);
+    Path red;   red.addCentredArc (pivot.x, pivot.y, R * 0.80f, R * 0.80f, 0, angleAt (z0), a1, true);
+    g.setColour (Colours::white);
+    g.strokePath (arc, PathStrokeType (1.3f));
+    g.setColour (Colour (0xffff5c7a));
+    g.strokePath (red, PathStrokeType (3.0f));
+
+    const float marks[] = { -20, -10, -7, -5, -3, -2, -1, 0, 1, 2, 3 };
+    const float numSize = jlimit (7.0f, 12.0f, R * 0.17f);
+    g.setFont (FontOptions (Font::getDefaultSerifFontName(), numSize, Font::bold));
+    for (float m : marks)
     {
-        const float lo = (float) i / segs;                     // segment from the bottom
-        const float segDb = lo * 63.0f - 60.0f;
-        const juce::Colour col = segDb >= -3.0f ? juce::Colour (0xffff3a2a) : segDb >= -12.0f ? juce::Colour (0xffffc23a) : juce::Colour (0xff4cff5a);
-        const bool lit = toFrac (levelDb) > lo;
-        const bool hold = std::abs (toFrac (holdDb) - lo) < 0.5f / segs && holdDb > -60.0f;
-        const auto seg = juce::Rectangle<float> (bar.getX(), bar.getBottom() - (i + 1) * sh - i * gap, bar.getWidth(), sh);
-        g.setColour (lit || hold ? col : col.darker (3.0f).withAlpha (0.6f));
-        g.fillRect (seg);
+        const float ang = angleAt (vuToFrac (m));
+        const bool major = (m == -20 || m == -10 || m == -5 || m == -3 || m == 0 || m == 3);
+        g.setColour (m > 0 ? Colour (0xffffd0da) : Colours::white);
+        g.drawLine (Line<float> (pt (ang, R * 0.80f), pt (ang, R * (major ? 0.92f : 0.87f))), major ? 1.3f : 0.9f);
+        if (major)
+        {
+            const auto tp = pt (ang, R * 1.02f);
+            g.drawText (String (std::abs ((int) m)), Rectangle<float> (tp.x - 14, tp.y - numSize * 0.7f, 28, numSize * 1.4f), Justification::centred, false);
+        }
     }
+    g.setColour (Colours::white);
+    const float vuSize = jlimit (9.0f, 18.0f, R * 0.28f);
+    g.setFont (FontOptions (Font::getDefaultSerifFontName(), vuSize, Font::bold | Font::italic));
+    g.drawText ("VU", Rectangle<float> (pivot.x - 30, pivot.y - R * 0.55f - vuSize * 0.7f, 60, vuSize * 1.4f), Justification::centred, false);
+    g.setFont (FontOptions (Font::getDefaultSerifFontName(), jlimit (7.0f, 11.0f, face.getHeight() * 0.12f), Font::bold));
+    g.drawText (label, face.withTrimmedLeft (4).withTrimmedBottom (2).withTrimmedTop (face.getHeight() - 16), Justification::bottomLeft, false);
+    g.drawText ("-", Rectangle<float> (face.getX() + 3, pivot.y - R * 0.6f, 14, 14), Justification::centredLeft, false);
+    g.drawText ("+", Rectangle<float> (face.getRight() - 17, pivot.y - R * 0.6f, 14, 14), Justification::centredRight, false);
+
+    // needle
+    const float na = angleAt (needle);
+    g.setColour (Colours::black.withAlpha (0.25f));
+    g.drawLine (Line<float> (pt (na, R * 0.15f).translated (1.5f, 1.5f), pt (na, R * 0.93f).translated (1.5f, 1.5f)), 1.4f);
+    g.setColour (Colour (0xff17112a));
+    g.drawLine (Line<float> (pt (na, R * 0.15f), pt (na, R * 0.93f)), 1.4f);
+    g.setColour (Colour (0xff17112a));
+    g.fillEllipse (pivot.x - 4, jmin (pivot.y, face.getBottom() - 2) - 4, 8, 8);
+
+    // peak light
+    const Point<float> pl (face.getRight() - 7.0f, face.getBottom() - 7.0f);
+    if (clipped) { g.setColour (Colour (0xffff3a2a).withAlpha (0.4f)); g.fillEllipse (pl.x - 6, pl.y - 6, 12, 12); }
+    g.setColour (clipped ? Colour (0xffff3a2a) : Colour (0xff4a1a2a));
+    g.fillEllipse (pl.x - 3, pl.y - 3, 6, 6);
 }

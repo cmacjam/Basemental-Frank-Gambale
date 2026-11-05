@@ -62,8 +62,23 @@ public:
     // level meters: peak since the GUI last read (linear)
     float takeInputPeak()  { return inPeak.exchange (0.0f); }
     float takeOutputPeak() { return outPeak.exchange (0.0f); }
+    // mean-square level since the GUI last read (for VU ballistics)
+    float takeInputRms()  { return takeRms (inSum, inCount); }
+    float takeOutputRms() { return takeRms (outSum, outCount); }
 private:
-    std::atomic<float> inPeak { 0.0f }, outPeak { 0.0f };
+    std::atomic<float> inPeak { 0.0f }, outPeak { 0.0f }, inSum { 0.0f }, outSum { 0.0f };
+    std::atomic<int> inCount { 0 }, outCount { 0 };
+    static void atomicAdd (std::atomic<float>& a, float v)
+    {
+        float cur = a.load (std::memory_order_relaxed);
+        while (! a.compare_exchange_weak (cur, cur + v, std::memory_order_relaxed)) {}
+    }
+    static float takeRms (std::atomic<float>& sum, std::atomic<int>& count)
+    {
+        const int c = count.exchange (0);
+        const float s = sum.exchange (0.0f);
+        return c > 0 ? std::sqrt (s / (float) c) : 0.0f;
+    }
     static void atomicMax (std::atomic<float>& a, float v)
     {
         float cur = a.load (std::memory_order_relaxed);
