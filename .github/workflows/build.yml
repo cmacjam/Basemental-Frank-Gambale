@@ -126,10 +126,14 @@ jobs:
           name: BasementalFG250-${{ matrix.name }}-Installer
           path: dist
 
-  # Publishing a version tag (e.g. v1.2.0) attaches the tested installers to a
-  # GitHub Release, so anyone can download them without signing in.
+  # Publishes the tested installers as a GitHub Release (v<FUSION_VERSION>) when a
+  # commit message contains [release], a version tag is pushed, or the workflow
+  # is run by hand from the Actions tab.
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release]'))
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -148,6 +152,10 @@ jobs:
           ls -la release
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ env.FUSION_VERSION }}
+          name: Basemental FG 250 v${{ env.FUSION_VERSION }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
           files: release/*
           body: |
             **Basemental FG 250** two-channel fusion amp with strobe tuner.

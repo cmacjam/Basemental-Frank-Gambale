@@ -148,7 +148,8 @@ use the VST3/AU for the tuner.
 
 Every push to GitHub builds installers on Apple, Microsoft and Linux cloud
 machines, installs each one there, and checks it (`auval` for the Logic AU).
-Pushing a version tag (`git tag v1.2.0 && git push --tags`) publishes them on the
+A commit whose message contains `[release]` (or running the workflow by hand from
+the Actions tab) publishes them, as `v<version>`, on the
 **Releases** page. Builds of untagged pushes are under **Actions** > run > *Artifacts*:
 
 | | File | Installs |
