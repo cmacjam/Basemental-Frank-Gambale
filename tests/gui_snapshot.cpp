@@ -4,6 +4,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
 #include "TunerPanel.h"
+#include "PluginEditor.h"
 #include <thread>
 
 static void snapshot (juce::Component& c, const juce::File& f)
@@ -44,6 +45,27 @@ int main (int argc, char** argv)
         ed->setSize (w * 2, h * 2);
         snapshot (*ed, outDir.getChildFile ("faceplate@2x.png"));
         ed->setSize (w, h);
+    }
+
+    {   // FET Stack panel: compressor on and stacked, loud note, check gain reduction
+        for (auto* ch : ed->getChildren())
+            if (auto* c = dynamic_cast<CompPanel*> (ch)) c->setVisible (true);
+        auto setP = [&] (const char* id, float v) { if (auto* prm = proc->apvts.getParameter (id)) prm->setValueNotifyingHost (prm->convertTo0to1 (v)); };
+        setP ("comp_on", 1); setP ("comp_input", 18); setP ("comp_thru", 6); setP ("comp_drive", 4); setP ("comp_dry", 20);
+        juce::AudioBuffer<float> b (2, 512); juce::MidiBuffer mb; double ph0 = 0;
+        float minGr = 0;
+        for (int blk = 0; blk < 60; ++blk)
+        {
+            for (int i = 0; i < 512; ++i) { const float v = 0.3f * (float) std::sin (ph0); ph0 += 2 * juce::MathConstants<double>::pi * 196.0 / fs; b.setSample (0, i, v); b.setSample (1, i, v); }
+            proc->processBlock (b, mb);
+            for (int c = 0; c < 2; ++c) for (int i = 0; i < 512; ++i) if (! std::isfinite (b.getSample (c, i))) { std::printf ("FAIL: non-finite output with compressor\n"); return 1; }
+            if (blk % 4 == 3) { std::this_thread::sleep_for (std::chrono::milliseconds (35)); juce::Timer::callPendingTimersSynchronously(); }
+        }
+        snapshot (*ed, outDir.getChildFile ("comp.png"));
+        for (auto* ch : ed->getChildren())
+            if (auto* c = dynamic_cast<CompPanel*> (ch)) c->setVisible (false);
+        setP ("comp_on", 0);
+        (void) minGr;
     }
 
     TunerPanel* tuner = nullptr;

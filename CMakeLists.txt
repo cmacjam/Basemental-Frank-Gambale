@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Fusion250 VERSION 1.2.0 LANGUAGES C CXX)
+project(Fusion250 VERSION 1.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -71,6 +71,8 @@ target_link_libraries(Fusion250
 add_executable(render_test tests/render_test.cpp)
 target_include_directories(render_test PRIVATE Source)
 add_executable(tuner_test tests/tuner_test.cpp)
+add_executable(comp_test tests/comp_test.cpp)
+target_include_directories(comp_test PRIVATE Source)
 add_executable(tuner_stress_test tests/tuner_stress_test.cpp)
 target_include_directories(tuner_stress_test PRIVATE Source)
 target_include_directories(tuner_test PRIVATE Source)

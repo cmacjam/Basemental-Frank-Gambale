@@ -48,6 +48,27 @@ private:
     bool clipped = false;
 };
 
+// FET Stack panel: two FET compressors in series + Class-A drive (opens over the amp)
+class CompPanel : public juce::Component, private juce::Timer
+{
+public:
+    explicit CompPanel (Fusion250Processor&);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void visibilityChanged() override;
+private:
+    void timerCallback() override;
+    Fusion250Processor& proc;
+    using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
+    using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
+    struct K { std::unique_ptr<juce::Slider> s; std::unique_ptr<SA> a; juce::String label; };
+    std::vector<K> knobs;
+    FootswitchButton onBtn;
+    juce::TextButton stackBtn { "STACKED" }, ratioBtns[4];
+    std::unique_ptr<BA> onAtt, stackAtt;
+    float gr1 = 0, gr2 = 0;   // displayed gain reduction (dB), with release ballistics
+};
+
 class Fusion250Editor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
@@ -75,6 +96,8 @@ private:
 
     juce::TextButton channelBtn { "CH" }, padBtn { "-6 dB" }, irBtn { "Load IR..." }, tunerBtn { "TUNER" };
     FootswitchButton reverbBtn;
+    CompPanel compPanel;
+    juce::TextButton compBtn { "COMP" };
     TunerPanel tuner;
     RockerSwitch powerBtn;
     LevelMeter inMeter { "IN" }, outMeter { "OUT" };

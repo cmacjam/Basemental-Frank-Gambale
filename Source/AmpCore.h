@@ -14,6 +14,7 @@
 // =============================================================================
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <vector>
 
@@ -131,6 +132,167 @@ struct Oversampler4x
 inline double softSat (double x) { return x / std::sqrt (std::sqrt (1.0 + x * x * x * x)); }
 // Asymmetric soft clip (adds even harmonics), DC removed downstream
 inline double asymClip (double x, double bias) { return std::tanh (x + bias) - std::tanh (bias); }
+
+// ------------------------------------------------- Class-A style saturation
+// A single-ended (Class-A) transistor stage clips asymmetrically: biasing the
+// tanh curve off-centre makes one half-wave flatten before the other, adding
+// even harmonics (2nd, 4th) to the odd ones a symmetric curve gives. Drive
+// raises the gain into the curve smoothly; the output is scaled so a 0.5-peak
+// signal keeps its level, so turning Drive up adds harmonics and sustain rather
+// than volume. tanh is smooth everywhere: no hard clipping at any setting.
+// drive: 0 = bypass ... 1 = heavy.
+inline double classASaturateRaw (double x, double drive)
+{
+    const double g = 1.0 + 11.0 * drive * drive;       // gain into the curve
+    const double c = 0.15 + 0.35 * drive;              // bias (curve units): asymmetry -> 2nd harmonic
+    const double tc = std::tanh (c);
+    const double ref = std::tanh (0.5 * g + c) - tc;   // response to a 0.5 peak: level reference
+    const double sat = 0.5 * (std::tanh (g * x + c) - tc) / ref;
+    const double d = std::min (1.0, drive * 3.0);      // fade in from bypass over the first third
+    return x + d * (sat - x);
+}
+
+// Level compensation: a squashed wave carries more fundamental than a clean one
+// at the same peak, so measure the fundamental of a 0.5-peak sine through the
+// curve at 65 drive settings (once, at load) and scale it back to 0.5.
+inline double classASaturateMakeup (double drive)
+{
+    static const std::array<double, 65> table = []
+    {
+        std::array<double, 65> t {};
+        const int N = 1024;
+        for (int i = 0; i <= 64; ++i)
+        {
+            double acc = 0;
+            for (int n = 0; n < N; ++n)
+            {
+                const double s = std::sin (2 * kPi * n / N);
+                acc += classASaturateRaw (0.5 * s, i / 64.0) * s;
+            }
+            const double fund = 2.0 * acc / N;
+            t[(size_t) i] = fund > 1e-9 ? 0.5 / fund : 1.0;
+        }
+        return t;
+    }();
+    const double pos = std::min (std::max (drive, 0.0), 1.0) * 64.0;
+    const int i = std::min ((int) pos, 63);
+    const double f = pos - i;
+    return table[(size_t) i] + f * (table[(size_t) i + 1] - table[(size_t) i]);
+}
+
+inline double classASaturate (double x, double drive)
+{
+    if (drive <= 0.0) return x;
+    return classASaturateRaw (x, drive) * classASaturateMakeup (drive);
+}
+
+// ------------------------------------------- 1176-style FET compressor
+// Feed-forward: peak envelope follower -> dB -> soft-knee gain computer ->
+// attack/release smoothing in the dB domain. Fixed threshold (the Input
+// control drives into it), attack in microseconds, release in milliseconds.
+// No allocation, no locks: safe for the audio thread.
+struct FetCompressor
+{
+    double fs = 48000, thresholdDb = -24.0, kneeDb = 6.0, ratio = 4.0;
+    double att = 0, rel = 0, det = 0;
+    double env = 0, grDb = 0;        // detector envelope, smoothed gain change (<= 0 dB)
+
+    static double coef (double fs, double seconds) { return std::exp (-1.0 / (fs * std::max (seconds, 1e-9))); }
+
+    void prepare (double sampleRate)
+    {
+        fs = sampleRate;
+        det = coef (fs, 0.005);      // detector: instant rise, 5 ms fall
+        setAttackUs (250); setReleaseMs (250);
+        reset();
+    }
+    void reset() { env = 0; grDb = 0; }
+    void setAttackUs (double us) { att = coef (fs, us * 1e-6); }
+    void setReleaseMs (double ms) { rel = coef (fs, ms * 1e-3); }
+
+    // static soft-knee curve: gain change in dB (<= 0)
+    double gainComputer (double levelDb) const
+    {
+        const double over = levelDb - thresholdDb, w = kneeDb;
+        if (2.0 * over < -w) return 0.0;
+        if (2.0 * std::fabs (over) <= w) return (1.0 / ratio - 1.0) * (over + w * 0.5) * (over + w * 0.5) / (2.0 * w);
+        return (thresholdDb + over / ratio) - levelDb;
+    }
+
+    inline double process (double x)
+    {
+        const double a = std::fabs (x);
+        env = a > env ? a : det * env + (1.0 - det) * a;
+        const double target = gainComputer (20.0 * std::log10 (env + 1e-12));
+        const double c = target < grDb ? att : rel;   // more reduction -> attack, less -> release
+        grDb = c * grDb + (1.0 - c) * target;
+        return x * std::pow (10.0, grDb * 0.05);
+    }
+};
+
+// ------------------------ two FET compressors in series ("stacked")
+// Input -> Comp 1 -> Thru gain -> Comp 2 (optional) -> Class-A drive -> Output
+// then blended with the dry signal for parallel compression. Every level
+// control is smoothed per sample, so changes are sample-accurate and click-free.
+struct StackedFetComp
+{
+    struct Settings
+    {
+        bool on = false, stacked = true;
+        float inputDb = 0, thruDb = 0, outputDb = 0;  // Input drives into the fixed threshold
+        float attackUs = 250, releaseMs = 250;
+        float ratio = 4;
+        float drive = 0;                              // 0..1
+        float dryMix = 0;                             // 0 = all compressed .. 1 = all dry
+    };
+
+    FetCompressor c1, c2;
+    Oversampler4x os;                                 // keeps the saturation alias-free
+    Biquad dcBlock;
+    Smoother inG, thruG, outG, dry, drv, enable, stack;
+    double fs = 48000;
+    float gr1 = 0, gr2 = 0;                           // deepest gain reduction this block (dB, <= 0)
+
+    void prepare (double sampleRate, const Settings& s)
+    {
+        fs = sampleRate;
+        c1.prepare (fs); c2.prepare (fs);
+        os.prepare (fs);
+        dcBlock.highpass (fs, 10.0, 0.707);
+        (void) classASaturateMakeup (0.5);           // builds the level table now, not on the audio thread
+        for (auto* sm : { &inG, &thruG, &outG, &dry, &drv, &enable, &stack }) sm->prepare (fs, 10);
+        set (s, true);
+        reset();
+    }
+    void reset() { c1.reset(); c2.reset(); os.reset(); dcBlock.reset(); }
+
+    void set (const Settings& s, bool snap = false)
+    {
+        c1.setAttackUs (s.attackUs); c2.setAttackUs (s.attackUs);
+        c1.setReleaseMs (s.releaseMs); c2.setReleaseMs (s.releaseMs);
+        c1.ratio = c2.ratio = s.ratio;
+        const double t[7] = { dbToLin (s.inputDb), dbToLin (s.thruDb), dbToLin (s.outputDb), s.dryMix, s.drive,
+                              s.on ? 1.0 : 0.0, s.stacked ? 1.0 : 0.0 };
+        Smoother* sm[7] = { &inG, &thruG, &outG, &dry, &drv, &enable, &stack };
+        for (int i = 0; i < 7; ++i) { if (snap) sm[i]->snap (t[i]); else sm[i]->target = t[i]; }
+    }
+
+    inline double process (double x)
+    {
+        const double en = enable.next(), in = inG.next(), th = thruG.next(), og = outG.next();
+        const double dm = dry.next(), dv = drv.next(), st = stack.next();
+        if (en < 1e-4 && enable.target == 0.0) return x;                // fully bypassed: no CPU
+        double y = c1.process (x * in);
+        const double y2 = c2.process (y * th);
+        y = y + st * (y2 - y);                                          // stacked fades in/out smoothly
+        if (dv > 1e-4) y = dcBlock.process (os.process (y, [dv] (double v) { return classASaturate (v, dv); }));
+        y *= og;
+        const double out = (1.0 - dm) * y + dm * x;                     // parallel (dry) blend
+        gr1 = (float) std::min ((double) gr1, c1.grDb);
+        gr2 = (float) std::min ((double) gr2, st > 0.5 ? c2.grDb : 0.0);
+        return x + en * (out - x);                                      // click-free on/off
+    }
+};
 
 // ------------------------------------------------------------- 3-band "Tones"
 struct ToneStack
@@ -437,15 +599,16 @@ struct Params
 {
     int channel = 0;                          // 0 = Clean, 1 = Lead
     float clean[5] = { 4, 5, 5, 5, 5 };       // Gain, Low, Mid, High, Level (0..10)
-    float lead[5]  = { 6, 4.5f, 6.5f, 5, 5 };
+    float lead[5]  = { 0.51f, 4.5f, 6.5f, 5, 5 };
     float reverb = 2.5f;                      // 0..10
     bool reverbOn = true;                     // footswitch
-    int guitar = 0;                           // index into voiceName()
+    int guitar = 10;                          // index into voiceName() (10 = Semi-Hollow)
     int cabinet = 0;                          // index into cabName()
     int mic = 0;                              // 0 on-axis, 1 off-axis, 2 close (proximity)
     int output = 1;                           // 0 Pre Out, 1 Power + built-in cab, 2 Power only (external IR)
     bool pad6 = false;                        // Pre Out 0/-6 dB
     float inDb = 0, outDb = 0;
+    StackedFetComp::Settings comp;            // FET Stack compressor, ahead of the amp
 };
 
 class AmpCore
@@ -458,6 +621,7 @@ public:
         revL.prepare (fs, 0); revR.prepare (fs, 23);
         for (auto& c : cab) { c.model = -1; c.micMode = -1; c.setup (fs, p.cabinet, p.mic); c.reset(); }
         voice.setup (fs, p.guitar); voice.reset();
+        comp.prepare (fs, p.comp);
         xfade.prepare (fs, 15); wet.prepare (fs, 30); outG.prepare (fs, 20); inG.prepare (fs, 20);
         first = true;
         setParams (p);
@@ -465,7 +629,7 @@ public:
 
     void reset()
     {
-        clean.reset(); lead.reset(); revL.reset(); revR.reset(); voice.reset();
+        clean.reset(); lead.reset(); revL.reset(); revR.reset(); voice.reset(); comp.reset();
         for (auto& c : cab) c.reset();
     }
 
@@ -480,6 +644,7 @@ public:
         const double w = p.reverbOn ? std::pow (p.reverb / 10.0, 1.5) * 0.9 : 0.0;
         const double o = dbToLin (p.outDb) * ((p.output == 0 && p.pad6) ? 0.5 : 1.0);
         const double x = p.channel ? 1.0 : 0.0, i = dbToLin (p.inDb);
+        comp.set (p.comp, first);
         if (first) { wet.snap (w); outG.snap (o); xfade.snap (x); inG.snap (i); first = false; }
         else { wet.target = w; outG.target = o; xfade.target = x; inG.target = i; }
     }
@@ -489,7 +654,7 @@ public:
     {
         for (int s = 0; s < n; ++s)
         {
-            const double x = voice.process (in[s] * inG.next());
+            const double x = comp.process (voice.process (in[s] * inG.next()));   // pedal in front of the amp
             const double mix = xfade.next();
             double m = 0;
             if (mix < 0.9999) m += clean.process (x) * (1.0 - mix); else clean.process (x);
@@ -520,6 +685,11 @@ private:
     CabSim cab[2];
     GuitarVoice voice;
     Smoother xfade, wet, outG, inG;
+    StackedFetComp comp;
+
+public:
+    // deepest gain reduction (dB, <= 0) of each compressor since the last call
+    void takeCompGainReduction (float& g1, float& g2) { g1 = comp.gr1; g2 = comp.gr2; comp.gr1 = comp.gr2 = 0; }
 };
 
 } // namespace fusion

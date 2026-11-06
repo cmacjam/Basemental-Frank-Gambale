@@ -11,9 +11,9 @@ Get the latest installers from the **[Releases page](../../releases/latest)**:
 
 | File | For |
 |---|---|
-| `BasementalFG250-1.2.0-macOS-Installer.pkg` | **Logic Pro**, GarageBand, MainStage (AU) and other Mac DAWs (VST3). Apple Silicon + Intel |
-| `BasementalFG250-1.2.0-Windows-Setup.exe` | Windows DAWs (VST3) and a standalone app |
-| `BasementalFG250-1.2.0-Linux.tar.gz` | Linux (VST3 + LV2): unpack and run `./install.sh` |
+| `BasementalFG250-1.3.0-macOS-Installer.pkg` | **Logic Pro**, GarageBand, MainStage (AU) and other Mac DAWs (VST3). Apple Silicon + Intel |
+| `BasementalFG250-1.3.0-Windows-Setup.exe` | Windows DAWs (VST3) and a standalone app |
+| `BasementalFG250-1.3.0-Linux.tar.gz` | Linux (VST3 + LV2): unpack and run `./install.sh` |
 | `BasementalFG250-REAPER.jsfx` | REAPER, no install needed (no tuner) |
 
 In Logic: Audio FX slot > **Audio Units > Basemental > Basemental FG 250**.
@@ -27,6 +27,8 @@ In Logic: Audio FX slot > **Audio Units > Basemental > Basemental FG 250**.
 - 9 presets including 8 Gambale-style tones
 - Strobe tuner accurate to better than 0.1 cent: auto/manual note, transposing
   keys, cent offset, 8 historical temperaments, Gambale-tuning string guide
+- **FET Stack** compressor in front of the amp: two 1176-style FET compressors
+  in series with Thru, Class-A drive and a parallel Dry blend (**COMP** button)
 - Analogue VU meters for input and output, with peak lights
 - Formats: AU, VST3, LV2, Standalone, REAPER JSFX (AAX with Avid's SDK)
 
@@ -103,6 +105,44 @@ position) rather than trust the last decimal then.
 hardware loop (after the reverb, before the power amp), set Output to
 *Pre Out*, insert your delays/modulation after it, then add a cab IR loader.
 
+## FET Stack compressor
+
+Click **COMP** in the header. The compressor sits in front of the amp, like a
+pedal at the start of your board:
+
+```
+guitar -> Input -> FET Comp 1 -> Thru -> FET Comp 2 -> Class-A Drive -> Output -+-> amp
+     \__________________________ Dry (parallel blend) ___________________________/
+```
+
+| Control | What it does |
+|---|---|
+| ON | Footswitch; switching is click-free and Off is a bit-exact bypass |
+| Input | 0 to +36 dB into a fixed -24 dBFS threshold (1176-style: no threshold knob) |
+| Attack | 20 us to 800 us |
+| Release | 50 ms to 1100 ms |
+| Ratio | 4, 8, 12 or 20 : 1, 6 dB soft knee (both compressors) |
+| Thru | -20 to +20 dB from Comp 1 into Comp 2: how hard the second compressor works |
+| STACKED | Off = Comp 1 only |
+| Drive | Class-A style saturation: an off-centre tanh curve adds even (2nd) and odd (3rd) harmonics. Level-compensated, so Drive adds harmonics, not volume; no hard clipping at any setting |
+| Dry | 0-100% of the uncompressed signal blended back in (parallel compression) |
+| Output | -24 to +24 dB make-up |
+
+Meters show the gain reduction of each compressor. Everything is smoothed per
+sample, and nothing allocates memory on the audio thread.
+
+Measured (`tests/comp_test.cpp`): static curve within 0.01 dB of the 4:1
+soft-knee target; attack 20/250/800 us and release 50/250/1100 ms land within
+4% (release) and one sample (attack) of the setting; Drive keeps the
+fundamental within 0.01 dB from 0 to 10 while THD rises smoothly (7% to 31% on
+a 0.5-peak sine); about 1.5% of one CPU core for the whole stack.
+
+A Python version of the compressor for experimenting is in
+`prototypes/fet_compressor.py` (`python3 prototypes/fet_compressor.py --plot out.png`).
+
+The design takes after vintage FET studio compressors and stacked
+compressor pedals; it isn't affiliated with or endorsed by their makers.
+
 ## What's measured vs. estimated
 
 DV Mark publishes the chain order and control set but not the circuit.
@@ -154,9 +194,9 @@ the Actions tab) publishes them, as `v<version>`, on the
 
 | | File | Installs |
 |---|---|---|
-| macOS | `BasementalFG250-1.2.0-macOS-Installer.pkg` | AU to `/Library/Audio/Plug-Ins/Components`, VST3 to `/Library/Audio/Plug-Ins/VST3` (universal: Apple Silicon + Intel) |
-| Windows | `BasementalFG250-1.2.0-Windows-Setup.exe` | VST3 to `C:\Program Files\Common Files\VST3`, standalone app; uninstaller in Settings > Apps |
-| Linux | `BasementalFG250-1.2.0-Linux.tar.gz` | `./install.sh` to `~/.vst3` and `~/.lv2` (`--system`, `--uninstall`) |
+| macOS | `BasementalFG250-1.3.0-macOS-Installer.pkg` | AU to `/Library/Audio/Plug-Ins/Components`, VST3 to `/Library/Audio/Plug-Ins/VST3` (universal: Apple Silicon + Intel) |
+| Windows | `BasementalFG250-1.3.0-Windows-Setup.exe` | VST3 to `C:\Program Files\Common Files\VST3`, standalone app; uninstaller in Settings > Apps |
+| Linux | `BasementalFG250-1.3.0-Linux.tar.gz` | `./install.sh` to `~/.vst3` and `~/.lv2` (`--system`, `--uninstall`) |
 
 The installers aren't signed with a paid Apple/Microsoft developer certificate,
 so the first time:

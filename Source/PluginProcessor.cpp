@@ -73,7 +73,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout Fusion250Processor::createLa
     const NormalisableRange<float> knob (0.0f, 10.0f, 0.01f);
     const char* names[5] = { "Gain", "Low", "Mid", "High", "Level" };
     const float cleanDef[5] = { 4, 5, 5, 5, 5 };
-    const float leadDef[5]  = { 6, 4.5f, 6.5f, 5, 5 };
+    const float leadDef[5]  = { 0.51f, 4.5f, 6.5f, 5, 5 };
 
     p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::chan, 1 }, "Channel", StringArray { "Clean", "Lead" }, 0));
     for (int i = 0; i < 5; ++i)
@@ -83,10 +83,30 @@ juce::AudioProcessorValueTreeState::ParameterLayout Fusion250Processor::createLa
     p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ID::reverb, 1 }, "Reverb", knob, 2.5f));
     p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ID::revOn, 1 }, "Reverb On", true));
     p.push_back (std::make_unique<AudioParameterBool> (ParameterID { "power", 1 }, "Power", true));
+    // FET Stack: two 1176-style FET compressors in series + Class-A drive, ahead of the amp
+    auto skew = [] (float lo, float hi, float mid) { NormalisableRange<float> r (lo, hi); r.setSkewForCentre (mid); return r; };
+    p.push_back (std::make_unique<AudioParameterBool> (ParameterID { "comp_on", 1 }, "Comp On", false));
+    p.push_back (std::make_unique<AudioParameterBool> (ParameterID { "comp_stacked", 1 }, "Comp Stacked", true));
+    p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "comp_input", 1 }, "Comp Input",
+                 NormalisableRange<float> (0.0f, 36.0f, 0.1f), 12.0f, AudioParameterFloatAttributes().withLabel ("dB")));
+    p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "comp_attack", 1 }, "Comp Attack",
+                 skew (20.0f, 800.0f, 150.0f), 250.0f, AudioParameterFloatAttributes().withLabel ("us")));
+    p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "comp_release", 1 }, "Comp Release",
+                 skew (50.0f, 1100.0f, 300.0f), 250.0f, AudioParameterFloatAttributes().withLabel ("ms")));
+    p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { "comp_ratio", 1 }, "Comp Ratio",
+                 StringArray { "4:1", "8:1", "12:1", "20:1" }, 0));
+    p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "comp_thru", 1 }, "Comp Thru",
+                 NormalisableRange<float> (-20.0f, 20.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
+    p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "comp_drive", 1 }, "Comp Drive",
+                 NormalisableRange<float> (0.0f, 10.0f, 0.01f), 0.0f));
+    p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "comp_dry", 1 }, "Comp Dry Mix",
+                 NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "comp_output", 1 }, "Comp Output",
+                 NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
     StringArray voices, cabs;
     for (int i = 0; i < fusion::kNumVoices; ++i) voices.add (fusion::voiceName (i));
     for (int i = 0; i < fusion::kNumCabs; ++i) cabs.add (fusion::cabName (i));
-    p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::guitar, 1 }, "Guitar Voice", voices, 0));
+    p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::guitar, 1 }, "Guitar Voice", voices, 10));   // default: Semi-Hollow
     p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::cabinet, 1 }, "Cabinet", cabs, 0));
     p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::mic, 1 }, "Mic Position",
                  StringArray { "On-Axis", "Off-Axis", "Close (proximity)" }, 0));
@@ -131,6 +151,7 @@ namespace
         for (int i = 0; i < 5; ++i) { v.push_back ({ ID::clean[i], c[(size_t) i] }); v.push_back ({ ID::lead[i], l[(size_t) i] }); }
         return v;
     }
+    V withVoice (V v, int voice) { v.push_back ({ ID::guitar, (float) voice }); return v; }
     const std::array<float, 5> glassyClean { 3.5f, 4.5f, 5.0f, 6.2f, 5.0f };
 }
 
@@ -143,7 +164,7 @@ Fusion250Processor::Fusion250Processor()
 {
     presets = {
         //                                      ch   clean: gain low  mid  high level      lead: gain low  mid  high level   reverb
-        { "Init",                                chans (0, { 4.0f, 5.0f, 5.0f, 5.0f, 5.0f }, { 6.0f, 4.5f, 6.5f, 5.0f, 5.0f }, 2.5f) },
+        { "Init",                                withVoice (chans (0, { 4.0f, 5.0f, 5.0f, 5.0f, 5.0f }, { 0.51f, 4.5f, 6.5f, 5.0f, 5.0f }, 2.5f), 10) },
         { "Gambale - Glassy Clean",              chans (0, glassyClean,                      { 5.5f, 4.0f, 6.5f, 5.0f, 5.0f }, 3.0f) },
         { "Gambale - Jazz Neck Clean",           chans (0, { 4.5f, 5.0f, 5.5f, 4.0f, 5.0f }, { 6.5f, 4.5f, 6.5f, 4.5f, 5.0f }, 2.5f) },
         { "Gambale - Edge of Breakup",           chans (0, { 7.5f, 4.5f, 6.0f, 5.5f, 3.0f }, { 5.5f, 4.0f, 6.5f, 5.0f, 5.0f }, 2.0f) },
@@ -222,6 +243,20 @@ void Fusion250Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     p.output = outputMode == 0 ? 0 : (useIr ? 2 : 1);   // no IR loaded -> built-in cab
     p.pad6 = v (ID::pad) > 0.5f;
     p.inDb = v (ID::inTrim);
+    {
+        static const float ratios[4] = { 4.0f, 8.0f, 12.0f, 20.0f };
+        auto& c = p.comp;
+        c.on = v ("comp_on") > 0.5f;
+        c.stacked = v ("comp_stacked") > 0.5f;
+        c.inputDb = v ("comp_input");
+        c.attackUs = v ("comp_attack");
+        c.releaseMs = v ("comp_release");
+        c.ratio = ratios[juce::jlimit (0, 3, (int) v ("comp_ratio"))];
+        c.thruDb = v ("comp_thru");
+        c.drive = v ("comp_drive") / 10.0f;
+        c.dryMix = v ("comp_dry") / 100.0f;
+        c.outputDb = v ("comp_output");
+    }
     p.outDb = v (ID::outLvl);
     amp.setParams (p);
 
@@ -269,6 +304,11 @@ void Fusion250Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         }
         auto* o = buffer.getWritePointer (0);
         for (int i = 0; i < n; ++i) o[i] = 0.5f * (tmp.getSample (0, i) + tmp.getSample (1, i));
+    }
+
+    {   // gain-reduction readout for the COMP panel
+        float g1, g2; amp.takeCompGainReduction (g1, g2);
+        atomicMin (compGr1, g1); atomicMin (compGr2, g2);
     }
 
     // power switch: smooth fade so switching never clicks (tuner still listens)

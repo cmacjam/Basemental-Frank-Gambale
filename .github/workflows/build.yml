@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  FUSION_VERSION: "1.2.0"
+  FUSION_VERSION: "1.3.0"
 
 jobs:
   build:
@@ -44,7 +44,7 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          TARGETS="Fusion250_All render_test tuner_test tuner_stress_test"
+          TARGETS="Fusion250_All render_test tuner_test tuner_stress_test comp_test"
           [ "$RUNNER_OS" = "Linux" ] && TARGETS="$TARGETS gui_snapshot"
           cmake --build build --config Release --parallel 4 --target $TARGETS
 
@@ -56,6 +56,13 @@ jobs:
           "$B/render_test$X" .
           "$B/tuner_test$X"
           "$B/tuner_stress_test$X"
+          "$B/comp_test$X"
+
+      - name: Python compressor prototype (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m pip install --quiet numpy
+          python3 prototypes/fet_compressor.py
 
       - name: End-to-end tuner test in the real plug-in (Linux)
         if: runner.os == 'Linux'

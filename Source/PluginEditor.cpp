@@ -178,13 +178,14 @@ juce::Slider& Fusion250Editor::makeKnob (const char* paramId, const juce::String
     return *knobs.back().slider;
 }
 
-Fusion250Editor::Fusion250Editor (Fusion250Processor& p) : AudioProcessorEditor (&p), proc (p), tuner (p)
+Fusion250Editor::Fusion250Editor (Fusion250Processor& p) : AudioProcessorEditor (&p), proc (p), compPanel (p), tuner (p)
 {
     setLookAndFeel (&lnf);
     const char* names[5] = { "Gain", "Low", "Mid", "High", "Level" };
     const char* lead[5]  = { "l_gain", "l_low", "l_mid", "l_high", "l_level" };
     const char* clean[5] = { "c_gain", "c_low", "c_mid", "c_high", "c_level" };
     for (int i = 0; i < 5; ++i) makeKnob (lead[i], names[i]);
+    knobs[0].slider->setDoubleClickReturnValue (true, 0.51);   // Lead Gain resets to 0.51
     makeKnob ("reverb", "Reverb");
     for (int i = 0; i < 5; ++i) makeKnob (clean[i], names[i]);
     makeKnob ("input_trim", "Input", true).setDoubleClickReturnValue (true, 0.0);
@@ -230,9 +231,21 @@ Fusion250Editor::Fusion250Editor (Fusion250Processor& p) : AudioProcessorEditor 
     tunerBtn.setTooltip ("Strobe tuner (0.1 cent display)");
     tunerBtn.onClick = [this]
     {
+        if (tunerBtn.getToggleState()) { compBtn.setToggleState (false, juce::dontSendNotification); compPanel.setVisible (false); }
         tuner.setVisible (tunerBtn.getToggleState());
         tuner.toFront (false);   // cover the power switch and footswitch
     };
+    // FET Stack compressor panel (one overlay at a time)
+    compBtn.setClickingTogglesState (true);
+    compBtn.setTooltip ("FET Stack: two FET compressors in series + Class-A drive, in front of the amp");
+    compBtn.onClick = [this]
+    {
+        if (compBtn.getToggleState()) { tunerBtn.setToggleState (false, juce::dontSendNotification); tuner.setVisible (false); }
+        compPanel.setVisible (compBtn.getToggleState());
+        compPanel.toFront (false);
+    };
+    addAndMakeVisible (compBtn);
+    addChildComponent (compPanel);
     addAndMakeVisible (tunerBtn);
     addChildComponent (tuner);
 
@@ -457,7 +470,9 @@ void Fusion250Editor::resized()
 
     presetBox.setBounds (getWidth() - S (300), S (12), S (280), S (28));
     tunerBtn.setBounds (getWidth() - S (400), S (12), S (86), S (28));
+    compBtn.setBounds (getWidth() - S (494), S (12), S (86), S (28));
     tuner.setBounds (plate);
+    compPanel.setBounds (plate);
     channelBtn.setBounds (S (30), cleanBand.getY() - S (17), S (90), S (34));
 
     const int x0 = S (136), colW = S (115), knobSize = S (114);
@@ -663,4 +678,137 @@ void LevelMeter::paint (juce::Graphics& g)
     if (clipped) { g.setColour (Colour (0xffff3a2a).withAlpha (0.4f)); g.fillEllipse (pl.x - 6, pl.y - 6, 12, 12); }
     g.setColour (clipped ? Colour (0xffff3a2a) : Colour (0xff4a1a2a));
     g.fillEllipse (pl.x - 3, pl.y - 3, 6, 6);
+}
+
+// ============================================================ FET Stack panel
+namespace
+{
+    const juce::Colour compBg   { 0xff1b1d21 };
+    const juce::Colour compBg2  { 0xff0f1013 };
+    const juce::Colour silver   { 0xffd6dade };
+}
+
+CompPanel::CompPanel (Fusion250Processor& p) : proc (p)
+{
+    setOpaque (true);
+    struct Def { const char* id; const char* label; double reset; };
+    const Def defs[] = { { "comp_input", "INPUT", 12.0 }, { "comp_attack", "ATTACK", 250.0 }, { "comp_release", "RELEASE", 250.0 },
+                         { "comp_thru", "THRU", 0.0 }, { "comp_drive", "DRIVE", 0.0 }, { "comp_dry", "DRY", 0.0 }, { "comp_output", "OUTPUT", 0.0 } };
+    for (auto& d : defs)
+    {
+        K k;
+        k.label = d.label;
+        k.s = std::make_unique<juce::Slider> (juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox);
+        k.s->setRotaryParameters (juce::degreesToRadians (-145.0f), juce::degreesToRadians (145.0f), true);
+        k.s->setPopupDisplayEnabled (true, true, nullptr);
+        k.s->setDoubleClickReturnValue (true, d.reset);
+        addAndMakeVisible (*k.s);
+        k.a = std::make_unique<SA> (proc.apvts, d.id, *k.s);
+        knobs.push_back (std::move (k));
+    }
+    knobs[1].s->setTooltip ("Attack: 20 us (fast) to 800 us");
+    knobs[2].s->setTooltip ("Release: 50 ms to 1100 ms");
+    knobs[3].s->setTooltip ("Thru: level from Comp 1 into Comp 2 (how hard Comp 2 works)");
+    knobs[4].s->setTooltip ("Drive: Class-A style saturation, even + odd harmonics");
+    knobs[5].s->setTooltip ("Dry: blend in the uncompressed signal (parallel compression)");
+
+    onBtn.setTooltip ("FET Stack on/off");
+    addAndMakeVisible (onBtn);
+    onAtt = std::make_unique<BA> (proc.apvts, "comp_on", onBtn);
+    stackBtn.setClickingTogglesState (true);
+    stackBtn.setTooltip ("On: Comp 1 feeds Comp 2. Off: Comp 1 only");
+    addAndMakeVisible (stackBtn);
+    stackAtt = std::make_unique<BA> (proc.apvts, "comp_stacked", stackBtn);
+
+    const char* rt[4] = { "4", "8", "12", "20" };
+    for (int i = 0; i < 4; ++i)
+    {
+        ratioBtns[i].setButtonText (rt[i]);
+        ratioBtns[i].setTooltip ("Ratio " + juce::String (rt[i]) + ":1");
+        ratioBtns[i].onClick = [this, i]
+        {
+            if (auto* prm = proc.apvts.getParameter ("comp_ratio")) prm->setValueNotifyingHost (prm->convertTo0to1 ((float) i));
+        };
+        addAndMakeVisible (ratioBtns[i]);
+    }
+}
+
+void CompPanel::visibilityChanged()
+{
+    if (isVisible()) { toFront (false); startTimerHz (30); } else stopTimer();
+}
+
+void CompPanel::timerCallback()
+{
+    const int r = (int) proc.apvts.getRawParameterValue ("comp_ratio")->load();
+    for (int i = 0; i < 4; ++i) ratioBtns[i].setToggleState (i == r, juce::dontSendNotification);
+    // meter ballistics: jump to deeper reduction, recover at 30 dB/s
+    const float n1 = proc.takeCompGr1(), n2 = proc.takeCompGr2();
+    gr1 = juce::jmin (n1, gr1 + 1.0f); gr2 = juce::jmin (n2, gr2 + 1.0f);
+    if (proc.apvts.getRawParameterValue ("comp_on")->load() < 0.5f) gr1 = gr2 = 0;
+    repaint();
+}
+
+void CompPanel::resized()
+{
+    const float s = (float) getWidth() / 936.0f;
+    auto S = [s] (float v) { return juce::roundToInt (v * s); };
+    onBtn.setBounds (S (40), S (70), S (74), S (110));
+    const int x0 = S (160), colW = S (110), ks = S (92);
+    for (size_t i = 0; i < knobs.size(); ++i)
+        knobs[i].s->setBounds (x0 + (int) i * colW + colW / 2 - ks / 2, S (66), ks, ks);
+    for (int i = 0; i < 4; ++i) ratioBtns[i].setBounds (S (170) + i * S (58), S (226), S (50), S (30));
+    stackBtn.setBounds (S (420), S (226), S (110), S (30));
+}
+
+void CompPanel::paint (juce::Graphics& g)
+{
+    const float s = (float) getWidth() / 936.0f;
+    juce::ColourGradient bg (compBg, 0, 0, compBg2, 0, (float) getHeight(), false);
+    g.setGradientFill (bg);
+    g.fillAll();
+    g.setColour (silver.withAlpha (0.25f));
+    g.drawRect (getLocalBounds().reduced ((int) (6 * s)), 1);
+
+    auto text = [&] (const juce::String& t, juce::Rectangle<float> r, float size, bool italic = false,
+                     juce::Justification j = juce::Justification::centred, float alpha = 1.0f)
+    {
+        g.setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultSerifFontName(), size * s,
+                                                  juce::Font::bold | (italic ? juce::Font::italic : 0))));
+        g.setColour (silver.withAlpha (alpha));
+        g.drawText (t, r, j);
+    };
+    text ("FET Stack", { 24 * s, 12 * s, 300 * s, 30 * s }, 24, true, juce::Justification::centredLeft);
+    text ("STACKED FET COMPRESSOR  /  CLASS-A DRIVE", { 180 * s, 16 * s, 500 * s, 24 * s }, 11, false, juce::Justification::centredLeft, 0.6f);
+    text ("ON", { 40 * s, 52 * s, 74 * s, 16 * s }, 12);
+    for (auto& k : knobs)
+    {
+        const auto b = k.s->getBounds().toFloat();
+        text (k.label, { b.getX() - 10 * s, b.getY() - 18 * s, b.getWidth() + 20 * s, 16 * s }, 13);
+    }
+    text ("RATIO", { 170 * s, 206 * s, 226 * s, 16 * s }, 11, false, juce::Justification::centredLeft, 0.7f);
+    text ("COMP 2", { 420 * s, 206 * s, 110 * s, 16 * s }, 11, false, juce::Justification::centredLeft, 0.7f);
+
+    // gain-reduction meters
+    auto meter = [&] (float y, const char* label, float gr)
+    {
+        const float x = 580 * s, w = 320 * s, h = 14 * s;
+        text (label, { x, y - 16 * s, w, 14 * s }, 10.5f, false, juce::Justification::centredLeft, 0.7f);
+        g.setColour (juce::Colours::black);
+        g.fillRoundedRectangle (x, y, w, h, 2.0f);
+        const float frac = juce::jlimit (0.0f, 1.0f, -gr / 20.0f);           // 0 .. -20 dB, grows left to right
+        juce::ColourGradient bar (juce::Colour (0xffb79ae8), x, y, juce::Colour (0xff7e5fc4), x + w, y, false);
+        g.setGradientFill (bar);
+        g.fillRoundedRectangle (x, y + 2 * s, w * frac, h - 4 * s, 1.5f);
+        for (int db = 0; db <= 20; db += 5)
+        {
+            const float tx = x + w * db / 20.0f;
+            g.setColour (silver.withAlpha (0.5f));
+            g.drawVerticalLine ((int) tx, y + h, y + h + 4 * s);
+            text (juce::String (-db), { tx - 14 * s, y + h + 4 * s, 28 * s, 12 * s }, 9, false, juce::Justification::centred, 0.6f);
+        }
+        text (juce::String (gr, 1) + " dB", { x + w - 80 * s, y - 16 * s, 80 * s, 14 * s }, 10.5f, false, juce::Justification::centredRight, 0.9f);
+    };
+    meter (214 * s, "COMP 1  GAIN REDUCTION", gr1);
+    meter (256 * s, "COMP 2  GAIN REDUCTION", gr2);
 }

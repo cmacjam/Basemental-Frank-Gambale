@@ -64,10 +64,19 @@ public:
     float takeOutputPeak() { return outPeak.exchange (0.0f); }
     // mean-square level since the GUI last read (for VU ballistics)
     float takeInputRms()  { return takeRms (inSum, inCount); }
+    // deepest FET Stack gain reduction (dB, <= 0) since the GUI last read
+    float takeCompGr1() { return compGr1.exchange (0.0f); }
+    float takeCompGr2() { return compGr2.exchange (0.0f); }
     float takeOutputRms() { return takeRms (outSum, outCount); }
 private:
     std::atomic<float> inPeak { 0.0f }, outPeak { 0.0f }, inSum { 0.0f }, outSum { 0.0f };
     std::atomic<int> inCount { 0 }, outCount { 0 };
+    std::atomic<float> compGr1 { 0.0f }, compGr2 { 0.0f };
+    static void atomicMin (std::atomic<float>& a, float v)
+    {
+        float cur = a.load (std::memory_order_relaxed);
+        while (v < cur && ! a.compare_exchange_weak (cur, v, std::memory_order_relaxed)) {}
+    }
     static void atomicAdd (std::atomic<float>& a, float v)
     {
         float cur = a.load (std::memory_order_relaxed);
