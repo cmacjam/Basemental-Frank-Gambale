@@ -64,8 +64,9 @@ private:
     struct K { std::unique_ptr<juce::Slider> s; std::unique_ptr<SA> a; juce::String label; };
     std::vector<K> knobs;
     FootswitchButton onBtn;
-    juce::TextButton stackBtn { "STACKED" }, ratioBtns[4];
-    std::unique_ptr<BA> onAtt, stackAtt;
+    juce::TextButton stackBtn { "STACKED" }, autoBtn { "AUTO" }, lineBtn { "LINE DRIVE" }, ratioBtns[8];
+    juce::ComboBox presetBox;
+    std::unique_ptr<BA> onAtt, stackAtt, autoAtt, lineAtt;
     float gr1 = 0, gr2 = 0;   // displayed gain reduction (dB), with release ballistics
 };
 

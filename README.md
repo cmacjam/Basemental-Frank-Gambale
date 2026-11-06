@@ -24,7 +24,7 @@ In Logic: Audio FX slot > **Audio Units > Basemental > Basemental FG 250**.
 - Shared reverb with a stomp footswitch, rocker power switch with blue ON lamp
 - 8 built-in cabinets, 3 mic positions, or load your own cabinet IR
 - 12 guitar voicings (FG1/FG2, single-coil, humbucker, hollowbody...)
-- 18 presets: 8 Gambale-style tones and 9 compressor presets
+- 9 amp presets (8 Gambale-style) and 15 FET Stack compressor presets
 - Strobe tuner accurate to better than 0.1 cent: auto/manual note, transposing
   keys, cent offset, 8 historical temperaments, Gambale-tuning string guide
 - **FET Stack** compressor in front of the amp: two 1176-style FET compressors
@@ -119,29 +119,50 @@ guitar -> Input -> FET Comp 1 -> Thru -> FET Comp 2 -> Class-A Drive -> Output -
 |---|---|
 | ON | Footswitch; switching is click-free and Off is a bit-exact bypass |
 | Input | -24 to +24 dB into a fixed -24 dBFS threshold (1176-style: no threshold knob) |
-| Attack | 20 us to 800 us |
+| Attack | 20 us (FET-fast) to 50 ms |
 | Release | 50 ms to 1100 ms |
-| Ratio | 4, 8, 12 or 20 : 1, 6 dB soft knee (both compressors) |
+| Ratio | 2, 3, 4, 6, 8, 12, 20 : 1 or ALL (British mode), both compressors |
+| Knee | 0 dB (hard) to 12 dB (soft) |
+| AUTO | Program-dependent release |
+| LINE DRIVE | Comp 1 as an overdriven preamp, no gain reduction |
 | Thru | -20 to +20 dB from Comp 1 into Comp 2: how hard the second compressor works |
 | STACKED | Off = Comp 1 only |
 | Drive | Class-A style saturation: an off-centre tanh curve adds even (2nd) and odd (3rd) harmonics. Level-compensated, so Drive adds harmonics, not volume; no hard clipping at any setting |
 | Dry | 0-100% of the uncompressed signal blended back in (parallel compression) |
 | Output | -24 to +24 dB make-up |
 
-**Compressor presets** (each sets the amp too; Input and Output are
-loudness-matched, so switching the compressor on/off compares fairly):
+**FET Stack presets** are in the menu at the top of the COMP panel. They change
+the compressor only (never the amp) and switch it on. Input is set for the
+amount of compression shown; Output is loudness-matched to the compressor
+switched off, so on/off comparisons are fair. Turn the FET Stack off and the
+guitar goes straight to the amp, untouched.
 
-| Preset | Typical gain reduction | Idea |
+| Preset | Gain reduction | Settings |
 |---|---|---|
-| Gentle Always-On | 3 dB | Light leveling you leave on all the time |
-| Jazz Smooth Clean | 5 dB | Slow attack, long release, 30% dry: smooth, keeps dynamics |
-| Clean Arpeggio Shimmer | 6 dB | Even arpeggios with long release and a wetter reverb |
-| Country Snap | 8 dB | Slow attack lets the pick click through, fast release, 8:1 |
-| Funk Rhythm Squash | 12 dB | Fast attack, stacked 12:1 for flat, percussive rhythm |
-| Parallel Punch | 15 dB | 20:1 slammed and driven, half dry for punch with natural attack |
-| Sweep Picking Evener | 8 dB | Fast attack evens out note-to-note picking on the lead channel |
-| Fusion Legato Sustain | 10 dB | Stacked, smooth sustain for legato lines |
-| Singing Lead Sustain | 16 dB | Long release and drive for notes that hold |
+| Gentle Always-On | 3 dB | 4:1, 600 us / 300 ms, 20% dry |
+| Jazz Smooth Clean | 5 dB | 4:1 soft knee, 800 us / 600 ms, 30% dry |
+| Clean Arpeggio Shimmer | 6 dB | stacked 4:1, 500 us / 800 ms, 25% dry |
+| Country Snap | 8 dB | 8:1, 400 us / 150 ms, 15% dry |
+| Funk Rhythm Squash | 12 dB | stacked 12:1, 30 us / 100 ms |
+| Parallel Punch | 15 dB | stacked 20:1, 20 us / 50 ms, drive, 50% dry |
+| Sweep Picking Evener | 8 dB | stacked 8:1, 60 us / 120 ms |
+| Fusion Legato Sustain | 10 dB | stacked 4:1, 250 us / 400 ms |
+| Singing Lead Sustain | 16 dB | stacked 12:1, 400 us / 1100 ms, drive |
+| Stacked British Mode (Zeppelin-style DI) | 12 dB | Comp 1 Line Drive (overdriven preamp, no gain reduction) into Comp 2 in All mode, 20 us / 50 ms |
+| Sustain for Days (Gilmour-style) | 14 dB | 8:1, 50 us attack, 1100 ms release |
+| 16th-Note Chop (Chic-style funk) | 10 dB | 8:1, 7 ms / 100 ms |
+| LA Studio Clean (80s session snap) | 8 dB | 6:1 hard knee, 40 ms / 175 ms: the pick passes, the tail is held |
+| Wall-to-Wall Acoustic (modern pop) | 6 dB | 3:1 soft knee, 30 ms attack, auto release, 20% dry |
+| Front-End Anchor (djent tightener) | 8 dB | 4:1, 1 ms / 65 ms, before a high-gain lead channel |
+
+The style presets are inspired by commonly described approaches; they aren't
+the artists' or engineers' actual settings, and they aren't endorsed by them.
+
+Extra modes for those sounds: **ALL** (all-buttons-in British mode: the output
+drops as you hit harder, with a warped knee and FET distortion), **LINE DRIVE**
+(Comp 1 becomes an overdriven Class-A preamp with no gain reduction), **AUTO**
+release (program-dependent: short peaks recover in ~60 ms, sustained playing
+over ~1.5 s), **KNEE** (0 dB hard to 12 dB soft), and attack up to 50 ms.
 
 Meters show the gain reduction of each compressor. Everything is smoothed per
 sample, and nothing allocates memory on the audio thread.

@@ -51,7 +51,17 @@ int main (int argc, char** argv)
         for (auto* ch : ed->getChildren())
             if (auto* c = dynamic_cast<CompPanel*> (ch)) c->setVisible (true);
         auto setP = [&] (const char* id, float v) { if (auto* prm = proc->apvts.getParameter (id)) prm->setValueNotifyingHost (prm->convertTo0to1 (v)); };
-        setP ("comp_on", 1); setP ("comp_input", 18); setP ("comp_thru", 6); setP ("comp_drive", 4); setP ("comp_dry", 20);
+        // load a FET Stack preset: must switch the compressor on and leave the amp alone
+        const float chanBefore = proc->apvts.getRawParameterValue ("channel")->load();
+        const float leadGainBefore = proc->apvts.getRawParameterValue ("l_gain")->load();
+        proc->applyCompPreset (9);   // Stacked British Mode
+        if (proc->apvts.getRawParameterValue ("comp_on")->load() < 0.5f
+            || proc->apvts.getRawParameterValue ("channel")->load() != chanBefore
+            || proc->apvts.getRawParameterValue ("l_gain")->load() != leadGainBefore)
+        { std::printf ("FAIL: FET Stack preset changed the amp or didn't turn the compressor on\n"); return 1; }
+        std::printf ("FET Stack preset applied: compressor on, amp untouched\n");
+        for (auto* ch : ed->getChildren())
+            if (auto* c = dynamic_cast<CompPanel*> (ch)) { c->setVisible (false); c->setVisible (true); }
         juce::AudioBuffer<float> b (2, 512); juce::MidiBuffer mb; double ph0 = 0;
         float minGr = 0;
         for (int blk = 0; blk < 60; ++blk)

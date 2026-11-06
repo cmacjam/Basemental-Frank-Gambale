@@ -693,7 +693,8 @@ CompPanel::CompPanel (Fusion250Processor& p) : proc (p)
     setOpaque (true);
     struct Def { const char* id; const char* label; double reset; };
     const Def defs[] = { { "comp_input", "INPUT", 0.0 }, { "comp_attack", "ATTACK", 250.0 }, { "comp_release", "RELEASE", 250.0 },
-                         { "comp_thru", "THRU", 0.0 }, { "comp_drive", "DRIVE", 0.0 }, { "comp_dry", "DRY", 0.0 }, { "comp_output", "OUTPUT", 0.0 } };
+                         { "comp_knee", "KNEE", 6.0 }, { "comp_thru", "THRU", 0.0 }, { "comp_drive", "DRIVE", 0.0 },
+                         { "comp_dry", "DRY", 0.0 }, { "comp_output", "OUTPUT", 0.0 } };
     for (auto& d : defs)
     {
         K k;
@@ -706,11 +707,30 @@ CompPanel::CompPanel (Fusion250Processor& p) : proc (p)
         k.a = std::make_unique<SA> (proc.apvts, d.id, *k.s);
         knobs.push_back (std::move (k));
     }
-    knobs[1].s->setTooltip ("Attack: 20 us (fast) to 800 us");
-    knobs[2].s->setTooltip ("Release: 50 ms to 1100 ms");
-    knobs[3].s->setTooltip ("Thru: level from Comp 1 into Comp 2 (how hard Comp 2 works)");
-    knobs[4].s->setTooltip ("Drive: Class-A style saturation, even + odd harmonics");
-    knobs[5].s->setTooltip ("Dry: blend in the uncompressed signal (parallel compression)");
+    knobs[0].s->setTooltip ("Input: drives the signal into the fixed threshold (or into the preamp in Line Drive)");
+    knobs[1].s->setTooltip ("Attack: 20 us (FET-fast) to 50 ms (lets the pick through)");
+    knobs[2].s->setTooltip ("Release: 50 ms to 1100 ms (ignored when AUTO is on)");
+    knobs[3].s->setTooltip ("Knee: 0 dB = hard (VCA-style), 12 dB = very soft");
+    knobs[4].s->setTooltip ("Thru: level from Comp 1 into Comp 2 (how hard Comp 2 works)");
+    knobs[5].s->setTooltip ("Drive: Class-A style saturation, even + odd harmonics");
+    knobs[6].s->setTooltip ("Dry: blend in the uncompressed signal (parallel compression)");
+
+    // FET Stack presets: compressor settings only, the amp is left alone
+    for (int i = 0; i < (int) proc.compPresets.size(); ++i) presetBox.addItem (proc.compPresets[(size_t) i].name, i + 1);
+    presetBox.setTextWhenNothingSelected ("FET Stack presets");
+    presetBox.setTooltip ("Compressor presets: change only the FET Stack, never the amp");
+    if (proc.currentCompPreset >= 0) presetBox.setSelectedId (proc.currentCompPreset + 1, juce::dontSendNotification);
+    presetBox.onChange = [this] { if (presetBox.getSelectedId() > 0) proc.applyCompPreset (presetBox.getSelectedId() - 1); };
+    addAndMakeVisible (presetBox);
+
+    autoBtn.setClickingTogglesState (true);
+    autoBtn.setTooltip ("Auto release: program-dependent. Short peaks recover fast, sustained playing recovers slowly");
+    addAndMakeVisible (autoBtn);
+    autoAtt = std::make_unique<BA> (proc.apvts, "comp_auto_release", autoBtn);
+    lineBtn.setClickingTogglesState (true);
+    lineBtn.setTooltip ("Line Drive: Comp 1 becomes an overdriven Class-A preamp with no gain reduction; Input sets how hard");
+    addAndMakeVisible (lineBtn);
+    lineAtt = std::make_unique<BA> (proc.apvts, "comp_line_drive", lineBtn);
 
     onBtn.setTooltip ("FET Stack on/off");
     addAndMakeVisible (onBtn);
@@ -720,11 +740,12 @@ CompPanel::CompPanel (Fusion250Processor& p) : proc (p)
     addAndMakeVisible (stackBtn);
     stackAtt = std::make_unique<BA> (proc.apvts, "comp_stacked", stackBtn);
 
-    const char* rt[4] = { "4", "8", "12", "20" };
-    for (int i = 0; i < 4; ++i)
+    const char* rt[8] = { "2", "3", "4", "6", "8", "12", "20", "ALL" };
+    for (int i = 0; i < 8; ++i)
     {
         ratioBtns[i].setButtonText (rt[i]);
-        ratioBtns[i].setTooltip ("Ratio " + juce::String (rt[i]) + ":1");
+        ratioBtns[i].setTooltip (i == 7 ? juce::String ("All buttons in (British mode): over-compresses, warped knee, aggressive distortion")
+                                        : "Ratio " + juce::String (rt[i]) + ":1");
         ratioBtns[i].onClick = [this, i]
         {
             if (auto* prm = proc.apvts.getParameter ("comp_ratio")) prm->setValueNotifyingHost (prm->convertTo0to1 ((float) i));
@@ -741,7 +762,9 @@ void CompPanel::visibilityChanged()
 void CompPanel::timerCallback()
 {
     const int r = (int) proc.apvts.getRawParameterValue ("comp_ratio")->load();
-    for (int i = 0; i < 4; ++i) ratioBtns[i].setToggleState (i == r, juce::dontSendNotification);
+    for (int i = 0; i < 8; ++i) ratioBtns[i].setToggleState (i == r, juce::dontSendNotification);
+    if (proc.currentCompPreset >= 0 && presetBox.getSelectedId() != proc.currentCompPreset + 1)
+        presetBox.setSelectedId (proc.currentCompPreset + 1, juce::dontSendNotification);
     // meter ballistics: jump to deeper reduction, recover at 30 dB/s
     const float n1 = proc.takeCompGr1(), n2 = proc.takeCompGr2();
     gr1 = juce::jmin (n1, gr1 + 1.0f); gr2 = juce::jmin (n2, gr2 + 1.0f);
@@ -753,12 +776,16 @@ void CompPanel::resized()
 {
     const float s = (float) getWidth() / 936.0f;
     auto S = [s] (float v) { return juce::roundToInt (v * s); };
-    onBtn.setBounds (S (40), S (70), S (74), S (110));
-    const int x0 = S (160), colW = S (110), ks = S (92);
+    presetBox.setBounds (S (590), S (14), S (320), S (26));
+    onBtn.setBounds (S (38), S (66), S (70), S (96));
+    stackBtn.setBounds (S (22), S (184), S (104), S (26));
+    lineBtn.setBounds (S (22), S (230), S (104), S (26));
+    const int x0 = S (140), colW = S (98), ks = S (84);
     for (size_t i = 0; i < knobs.size(); ++i)
         knobs[i].s->setBounds (x0 + (int) i * colW + colW / 2 - ks / 2, S (66), ks, ks);
-    for (int i = 0; i < 4; ++i) ratioBtns[i].setBounds (S (170) + i * S (58), S (226), S (50), S (30));
-    stackBtn.setBounds (S (420), S (226), S (110), S (30));
+    const auto rel = knobs[2].s->getBounds();
+    autoBtn.setBounds (rel.getCentreX() - S (30), rel.getBottom() + S (2), S (60), S (20));
+    for (int i = 0; i < 8; ++i) ratioBtns[i].setBounds (S (150) + i * S (51), S (232), S (46), S (28));
 }
 
 void CompPanel::paint (juce::Graphics& g)
@@ -779,15 +806,16 @@ void CompPanel::paint (juce::Graphics& g)
         g.drawText (t, r, j);
     };
     text ("FET Stack", { 24 * s, 12 * s, 300 * s, 30 * s }, 24, true, juce::Justification::centredLeft);
-    text ("STACKED FET COMPRESSOR  /  CLASS-A DRIVE", { 180 * s, 16 * s, 500 * s, 24 * s }, 11, false, juce::Justification::centredLeft, 0.6f);
-    text ("ON", { 40 * s, 52 * s, 74 * s, 16 * s }, 12);
+    text ("STACKED FET COMPRESSOR  /  CLASS-A DRIVE", { 160 * s, 16 * s, 420 * s, 24 * s }, 11, false, juce::Justification::centredLeft, 0.6f);
+    text ("ON", { 38 * s, 48 * s, 70 * s, 16 * s }, 12);
+    text ("COMP 2", { 22 * s, 168 * s, 104 * s, 14 * s }, 10, false, juce::Justification::centred, 0.7f);
+    text ("COMP 1", { 22 * s, 214 * s, 104 * s, 14 * s }, 10, false, juce::Justification::centred, 0.7f);
     for (auto& k : knobs)
     {
         const auto b = k.s->getBounds().toFloat();
         text (k.label, { b.getX() - 10 * s, b.getY() - 18 * s, b.getWidth() + 20 * s, 16 * s }, 13);
     }
-    text ("RATIO", { 170 * s, 206 * s, 226 * s, 16 * s }, 11, false, juce::Justification::centredLeft, 0.7f);
-    text ("COMP 2", { 420 * s, 206 * s, 110 * s, 16 * s }, 11, false, juce::Justification::centredLeft, 0.7f);
+    text ("RATIO", { 150 * s, 212 * s, 200 * s, 16 * s }, 11, false, juce::Justification::centredLeft, 0.7f);
 
     // gain-reduction meters
     auto meter = [&] (float y, const char* label, float gr)

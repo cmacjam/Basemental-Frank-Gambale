@@ -189,34 +189,48 @@ inline double classASaturate (double x, double drive)
 // ------------------------------------------- 1176-style FET compressor
 // Feed-forward: peak envelope follower -> dB -> soft-knee gain computer ->
 // attack/release smoothing in the dB domain. Fixed threshold (the Input
-// control drives into it), attack in microseconds, release in milliseconds.
+// control drives into it). Options:
+//   * allButtons: "all buttons in" (British) mode: an over-compressing curve
+//     whose output *falls* as the input rises past threshold, a warped knee,
+//     and extra FET distortion while it is clamping
+//   * autoRelease: program-dependent release: short peaks recover fast,
+//     sustained compression recovers slowly, so levelling never "breathes"
 // No allocation, no locks: safe for the audio thread.
 struct FetCompressor
 {
     double fs = 48000, thresholdDb = -24.0, kneeDb = 6.0, ratio = 4.0;
-    double att = 0, rel = 0, det = 0;
-    double env = 0, grDb = 0;        // detector envelope, smoothed gain change (<= 0 dB)
+    bool allButtons = false, autoRelease = false;
+    double att = 0, rel = 0, det = 0, autoFast = 0, autoSlowA = 0, autoSlowR = 0;
+    double env = 0, grDb = 0, grSlow = 0;    // detector envelope, smoothed gain change (<= 0 dB)
 
     static double coef (double fs, double seconds) { return std::exp (-1.0 / (fs * std::max (seconds, 1e-9))); }
 
     void prepare (double sampleRate)
     {
         fs = sampleRate;
-        det = coef (fs, 0.005);      // detector: instant rise, 5 ms fall
+        det = coef (fs, 0.005);              // detector: instant rise, 5 ms fall
+        autoFast = coef (fs, 0.060);         // auto release: fast stage 60 ms
+        autoSlowA = coef (fs, 0.250);        //   slow stage builds over 250 ms
+        autoSlowR = coef (fs, 1.500);        //   and lets go over 1.5 s
         setAttackUs (250); setReleaseMs (250);
         reset();
     }
-    void reset() { env = 0; grDb = 0; }
+    void reset() { env = 0; grDb = 0; grSlow = 0; }
     void setAttackUs (double us) { att = coef (fs, us * 1e-6); }
     void setReleaseMs (double ms) { rel = coef (fs, ms * 1e-3); }
 
-    // static soft-knee curve: gain change in dB (<= 0)
+    // slope of the output above threshold (1/ratio, or negative in all-buttons mode)
+    double slope() const { return allButtons ? -0.07 : 1.0 / ratio; }
+
+    // static curve: gain change in dB (<= 0), quadratic knee of width kneeDb
     double gainComputer (double levelDb) const
     {
-        const double over = levelDb - thresholdDb, w = kneeDb;
+        const double over = levelDb - thresholdDb;
+        const double w = allButtons ? 2.0 : kneeDb, S = slope();
+        if (w < 0.01) return over > 0 ? (S - 1.0) * over : 0.0;              // hard knee
         if (2.0 * over < -w) return 0.0;
-        if (2.0 * std::fabs (over) <= w) return (1.0 / ratio - 1.0) * (over + w * 0.5) * (over + w * 0.5) / (2.0 * w);
-        return (thresholdDb + over / ratio) - levelDb;
+        if (2.0 * std::fabs (over) <= w) return (S - 1.0) * (over + w * 0.5) * (over + w * 0.5) / (2.0 * w);
+        return (S - 1.0) * over;
     }
 
     inline double process (double x)
@@ -224,9 +238,26 @@ struct FetCompressor
         const double a = std::fabs (x);
         env = a > env ? a : det * env + (1.0 - det) * a;
         const double target = gainComputer (20.0 * std::log10 (env + 1e-12));
-        const double c = target < grDb ? att : rel;   // more reduction -> attack, less -> release
-        grDb = c * grDb + (1.0 - c) * target;
-        return x * std::pow (10.0, grDb * 0.05);
+        if (! autoRelease)
+        {
+            const double c = target < grDb ? att : rel;      // more reduction -> attack, less -> release
+            grDb = c * grDb + (1.0 - c) * target;
+        }
+        else
+        {
+            const double cf = target < grDb ? att : autoFast;
+            grDb = cf * grDb + (1.0 - cf) * target;          // fast stage follows every peak
+            const double cs = target < grSlow ? autoSlowA : autoSlowR;
+            grSlow = cs * grSlow + (1.0 - cs) * target;      // slow stage only builds on sustained compression
+            grDb = std::min (grDb, grSlow);
+        }
+        double y = x * std::pow (10.0, grDb * 0.05);
+        if (allButtons)                                       // FET distortion while clamping
+        {
+            const double k = 0.35 * std::min (1.0, -grDb / 15.0);
+            y += k * y * y;
+        }
+        return y;
     }
 };
 
@@ -239,17 +270,20 @@ struct StackedFetComp
     struct Settings
     {
         bool on = false, stacked = true;
+        bool lineDrive = false;                       // Comp 1 as a driven preamp, no gain reduction
+        bool allButtons = false;                      // ratio "All": British mode
+        bool autoRelease = false;
         float inputDb = 0, thruDb = 0, outputDb = 0;  // Input drives into the fixed threshold
         float attackUs = 250, releaseMs = 250;
-        float ratio = 4;
+        float ratio = 4, kneeDb = 6;
         float drive = 0;                              // 0..1
         float dryMix = 0;                             // 0 = all compressed .. 1 = all dry
     };
 
     FetCompressor c1, c2;
-    Oversampler4x os;                                 // keeps the saturation alias-free
-    Biquad dcBlock;
-    Smoother inG, thruG, outG, dry, drv, enable, stack;
+    Oversampler4x os, osLine;                         // keep the saturation alias-free
+    Biquad dcBlock, dcLine;
+    Smoother inG, thruG, outG, dry, drv, enable, stack, line;
     double fs = 48000;
     float gr1 = 0, gr2 = 0;                           // deepest gain reduction this block (dB, <= 0)
 
@@ -257,38 +291,54 @@ struct StackedFetComp
     {
         fs = sampleRate;
         c1.prepare (fs); c2.prepare (fs);
-        os.prepare (fs);
-        dcBlock.highpass (fs, 10.0, 0.707);
+        os.prepare (fs); osLine.prepare (fs);
+        dcBlock.highpass (fs, 10.0, 0.707); dcLine.highpass (fs, 10.0, 0.707);
         (void) classASaturateMakeup (0.5);           // builds the level table now, not on the audio thread
-        for (auto* sm : { &inG, &thruG, &outG, &dry, &drv, &enable, &stack }) sm->prepare (fs, 10);
+        for (auto* sm : { &inG, &thruG, &outG, &dry, &drv, &enable, &stack, &line }) sm->prepare (fs, 10);
         set (s, true);
         reset();
     }
-    void reset() { c1.reset(); c2.reset(); os.reset(); dcBlock.reset(); }
+    void reset() { c1.reset(); c2.reset(); os.reset(); osLine.reset(); dcBlock.reset(); dcLine.reset(); }
 
     void set (const Settings& s, bool snap = false)
     {
-        c1.setAttackUs (s.attackUs); c2.setAttackUs (s.attackUs);
-        c1.setReleaseMs (s.releaseMs); c2.setReleaseMs (s.releaseMs);
-        c1.ratio = c2.ratio = s.ratio;
-        const double t[7] = { dbToLin (s.inputDb), dbToLin (s.thruDb), dbToLin (s.outputDb), s.dryMix, s.drive,
-                              s.on ? 1.0 : 0.0, s.stacked ? 1.0 : 0.0 };
-        Smoother* sm[7] = { &inG, &thruG, &outG, &dry, &drv, &enable, &stack };
-        for (int i = 0; i < 7; ++i) { if (snap) sm[i]->snap (t[i]); else sm[i]->target = t[i]; }
+        for (auto* c : { &c1, &c2 })
+        {
+            c->setAttackUs (s.attackUs); c->setReleaseMs (s.releaseMs);
+            c->ratio = s.ratio; c->kneeDb = s.kneeDb;
+            c->allButtons = s.allButtons; c->autoRelease = s.autoRelease;
+        }
+        const double t[8] = { dbToLin (s.inputDb), dbToLin (s.thruDb), dbToLin (s.outputDb), s.dryMix, s.drive,
+                              s.on ? 1.0 : 0.0, s.stacked ? 1.0 : 0.0, s.lineDrive ? 1.0 : 0.0 };
+        Smoother* sm[8] = { &inG, &thruG, &outG, &dry, &drv, &enable, &stack, &line };
+        for (int i = 0; i < 8; ++i) { if (snap) sm[i]->snap (t[i]); else sm[i]->target = t[i]; }
     }
 
     inline double process (double x)
     {
         const double en = enable.next(), in = inG.next(), th = thruG.next(), og = outG.next();
-        const double dm = dry.next(), dv = drv.next(), st = stack.next();
-        if (en < 1e-4 && enable.target == 0.0) return x;                // fully bypassed: no CPU
-        double y = c1.process (x * in);
+        const double dm = dry.next(), dv = drv.next(), st = stack.next(), ln = line.next();
+        if (en < 1e-4 && enable.target == 0.0) return x;                // off: straight to the amp, untouched
+        double y;
+        if (ln > 1e-4)                                                  // Comp 1 as an overdriven line preamp
+        {
+            const double drvAmt = std::max (dv, 0.15);
+            const double lineOut = dcLine.process (osLine.process (x * in, [drvAmt] (double v) { return classASaturate (v, drvAmt); }));
+            double compOut = 0.0;
+            if (ln < 0.9999) compOut = c1.process (x * in); else c1.reset();
+            y = compOut + ln * (lineOut - compOut);
+        }
+        else y = c1.process (x * in);
         const double y2 = c2.process (y * th);
         y = y + st * (y2 - y);                                          // stacked fades in/out smoothly
-        if (dv > 1e-4) y = dcBlock.process (os.process (y, [dv] (double v) { return classASaturate (v, dv); }));
+        if (dv > 1e-4 && ln < 0.9999)                                   // post drive (Line Drive already saturates)
+        {
+            const double sat = dcBlock.process (os.process (y, [dv] (double v) { return classASaturate (v, dv); }));
+            y = y + (1.0 - ln) * (sat - y);
+        }
         y *= og;
         const double out = (1.0 - dm) * y + dm * x;                     // parallel (dry) blend
-        gr1 = (float) std::min ((double) gr1, c1.grDb);
+        gr1 = (float) std::min ((double) gr1, ln > 0.5 ? 0.0 : c1.grDb);
         gr2 = (float) std::min ((double) gr2, st > 0.5 ? c2.grDb : 0.0);
         return x + en * (out - x);                                      // click-free on/off
     }

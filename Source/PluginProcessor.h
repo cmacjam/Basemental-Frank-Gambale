@@ -48,6 +48,13 @@ public:
     struct Preset { const char* name; std::vector<std::pair<const char*, float>> values; };
     std::vector<Preset> presets;
 
+    // FET Stack presets: compressor settings only (the amp is left alone)
+    struct CompSettings { float input, attackUs, releaseMs; int ratioIdx; float knee; bool stacked, autoRelease, lineDrive; float thru, drive, dry, output; };
+    struct CompPreset { const char* name; CompSettings s; };
+    std::vector<CompPreset> compPresets;
+    void applyCompPreset (int index);
+    int currentCompPreset = -1;
+
 private:
     class TunerThread;
     friend class TunerThread;

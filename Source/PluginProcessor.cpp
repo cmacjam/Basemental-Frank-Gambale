@@ -90,11 +90,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout Fusion250Processor::createLa
     p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "comp_input", 1 }, "Comp Input",
                  NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
     p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "comp_attack", 1 }, "Comp Attack",
-                 skew (20.0f, 800.0f, 150.0f), 250.0f, AudioParameterFloatAttributes().withLabel ("us")));
+                 skew (20.0f, 50000.0f, 800.0f), 250.0f, AudioParameterFloatAttributes().withLabel ("us")
+                     .withStringFromValueFunction ([] (float us, int) { return us < 1000.0f ? String (juce::roundToInt (us)) + " us"
+                                                                                           : String (us / 1000.0f, 1) + " ms"; })));
     p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "comp_release", 1 }, "Comp Release",
                  skew (50.0f, 1100.0f, 300.0f), 250.0f, AudioParameterFloatAttributes().withLabel ("ms")));
+    p.push_back (std::make_unique<AudioParameterBool> (ParameterID { "comp_auto_release", 1 }, "Comp Auto Release", false));
     p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { "comp_ratio", 1 }, "Comp Ratio",
-                 StringArray { "4:1", "8:1", "12:1", "20:1" }, 0));
+                 StringArray { "2:1", "3:1", "4:1", "6:1", "8:1", "12:1", "20:1", "All (British)" }, 2));
+    p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "comp_knee", 1 }, "Comp Knee",
+                 NormalisableRange<float> (0.0f, 12.0f, 0.1f), 6.0f, AudioParameterFloatAttributes().withLabel ("dB")));
+    p.push_back (std::make_unique<AudioParameterBool> (ParameterID { "comp_line_drive", 1 }, "Comp 1 Line Drive", false));
     p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "comp_thru", 1 }, "Comp Thru",
                  NormalisableRange<float> (-20.0f, 20.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
     p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "comp_drive", 1 }, "Comp Drive",
@@ -147,22 +153,11 @@ namespace
     using V = std::vector<std::pair<const char*, float>>;
     V chans (int ch, std::array<float, 5> c, std::array<float, 5> l, float rev, bool revOn = true)
     {
-        V v { { ID::chan, (float) ch }, { ID::reverb, rev }, { ID::revOn, revOn ? 1.0f : 0.0f }, { "comp_on", 0.0f } };
+        V v { { ID::chan, (float) ch }, { ID::reverb, rev }, { ID::revOn, revOn ? 1.0f : 0.0f } };   // amp only: never touches the FET Stack
         for (int i = 0; i < 5; ++i) { v.push_back ({ ID::clean[i], c[(size_t) i] }); v.push_back ({ ID::lead[i], l[(size_t) i] }); }
         return v;
     }
     V withVoice (V v, int voice) { v.push_back ({ ID::guitar, (float) voice }); return v; }
-    // FET Stack settings: Input/Output were loudness-matched against the same preset
-    // with the compressor off, on a test performance with uneven picking.
-    struct CompSet { float input, attackUs, releaseMs; int ratioIdx; bool stacked; float thru, drive, dry, output; };
-    V withComp (V v, CompSet c)
-    {
-        V extra { { "comp_on", 1.0f }, { "comp_input", c.input }, { "comp_attack", c.attackUs }, { "comp_release", c.releaseMs },
-                  { "comp_ratio", (float) c.ratioIdx }, { "comp_stacked", c.stacked ? 1.0f : 0.0f }, { "comp_thru", c.thru },
-                  { "comp_drive", c.drive }, { "comp_dry", c.dry }, { "comp_output", c.output } };
-        v.insert (v.end(), extra.begin(), extra.end());
-        return v;
-    }
     const std::array<float, 5> glassyClean { 3.5f, 4.5f, 5.0f, 6.2f, 5.0f };
 }
 
@@ -184,18 +179,47 @@ Fusion250Processor::Fusion250Processor()
         { "Gambale - Singing Sustain",           chans (1, glassyClean,                      { 8.5f, 4.5f, 7.5f, 4.2f, 5.0f }, 3.5f) },
         { "Gambale - Fusion Crunch Rhythm",      chans (1, glassyClean,                      { 3.5f, 4.5f, 6.0f, 5.5f, 5.4f }, 1.5f) },
         { "Gambale - Ballad Lead (wet)",         chans (1, glassyClean,                      { 6.5f, 4.5f, 6.5f, 4.5f, 5.0f }, 5.5f) },
-        // ---- compressor presets (FET Stack on). Typical gain reduction in brackets.
-        //                                                                                                                           in   attack release ratio stack thru drive dry  out
-        { "Comp - Gentle Always-On (3 dB)",      withComp (chans (0, { 4.0f, 5.0f, 5.0f, 5.0f, 5.0f }, { 6.0f, 4.5f, 6.5f, 5.0f, 5.0f }, 2.5f), { -5.5f, 600,  300, 0, false,  0, 0.5f, 20, 7.0f }) },
-        { "Comp - Jazz Smooth Clean (5 dB)",     withComp (chans (0, { 4.5f, 5.0f, 5.5f, 4.0f, 5.0f }, { 5.5f, 4.0f, 6.5f, 5.0f, 5.0f }, 2.5f), { -3.5f, 800,  600, 0, false,  0, 0.8f, 30, 5.5f }) },
-        { "Comp - Clean Arpeggio Shimmer (6 dB)",withComp (chans (0, { 3.5f, 4.5f, 5.0f, 6.2f, 5.0f }, { 5.5f, 4.0f, 6.5f, 5.0f, 5.0f }, 4.5f), { -5.5f, 500,  800, 0, true,  -2, 0.0f, 25, 8.5f }) },
-        { "Comp - Country Snap (8 dB)",          withComp (chans (0, { 4.5f, 4.5f, 5.0f, 6.5f, 5.0f }, { 5.5f, 4.0f, 6.5f, 5.0f, 5.0f }, 1.5f), {  1.5f, 400,  150, 1, false,  0, 1.0f, 15, 6.5f }) },
-        { "Comp - Funk Rhythm Squash (12 dB)",   withComp (chans (0, { 4.0f, 4.0f, 5.5f, 6.0f, 5.0f }, { 5.5f, 4.0f, 6.5f, 5.0f, 5.0f }, 1.0f), {  1.5f,  30,  100, 2, true,   3, 0.5f,  0, 8.0f }) },
-        { "Comp - Parallel Punch (15 dB)",       withComp (chans (0, { 6.0f, 4.5f, 6.0f, 5.5f, 4.5f }, { 5.5f, 4.0f, 6.5f, 5.0f, 5.0f }, 1.5f), {  2.5f,  20,   50, 3, true,   6, 3.0f, 50, 3.0f }) },
-        { "Comp - Sweep Picking Evener (8 dB)",  withComp (chans (1, glassyClean,                      { 5.0f, 4.0f, 6.5f, 5.0f, 5.0f }, 2.0f), {  1.0f,  60,  120, 1, true,  -3, 0.5f,  0, 2.0f }) },
-        { "Comp - Fusion Legato Sustain (10 dB)",withComp (chans (1, glassyClean,                      { 6.5f, 4.5f, 7.0f, 4.2f, 5.0f }, 3.0f), { -0.5f, 250,  400, 0, true,   2, 1.5f, 10, 0.5f }) },
-        { "Comp - Singing Lead Sustain (16 dB)", withComp (chans (1, glassyClean,                      { 7.5f, 4.5f, 7.5f, 4.2f, 5.0f }, 3.5f), {  0.0f, 400, 1100, 2, true,   4, 2.5f,  0, 0.5f }) },
     };
+
+    // ---- FET Stack presets: compressor settings only, never the amp. Input sets
+    // the amount of compression (average gain reduction in the comment) and Output
+    // is loudness-matched to the compressor switched off, through the default amp,
+    // on a test performance with uneven picking. Ratio index: 0 2:1, 1 3:1, 2 4:1,
+    // 3 6:1, 4 8:1, 5 12:1, 6 20:1, 7 All (British). Style presets are inspired by
+    // commonly described approaches; they are not the artists' or engineers' settings.
+    //                                                 input  attack(us) rel(ms) ratio knee  stacked autoRel lineDrv thru  drive dry  output
+    compPresets = {
+        { "Gentle Always-On",                        { -5.5f,    600,  300, 2,  6.0f, false, false, false,  0.0f, 0.5f, 20,  7.0f } },   // 3 dB
+        { "Jazz Smooth Clean",                       { -3.5f,    800,  600, 2,  8.0f, false, false, false,  0.0f, 0.8f, 30,  6.0f } },   // 5 dB
+        { "Clean Arpeggio Shimmer",                  { -5.5f,    500,  800, 2,  6.0f, true,  false, false, -2.0f, 0.0f, 25,  8.0f } },   // 6 dB
+        { "Country Snap",                            {  1.5f,    400,  150, 4,  4.0f, false, false, false,  0.0f, 1.0f, 15,  6.0f } },   // 8 dB
+        { "Funk Rhythm Squash",                      {  1.5f,     30,  100, 5,  3.0f, true,  false, false,  3.0f, 0.5f,  0,  8.0f } },   // 12 dB
+        { "Parallel Punch",                          {  2.5f,     20,   50, 6,  2.0f, true,  false, false,  6.0f, 3.0f, 50,  3.0f } },   // 15 dB
+        { "Sweep Picking Evener",                    {  1.0f,     60,  120, 4,  4.0f, true,  false, false, -3.0f, 0.5f,  0, 11.0f } },   // 8 dB
+        { "Fusion Legato Sustain",                   { -0.5f,    250,  400, 2,  6.0f, true,  false, false,  2.0f, 1.5f, 10,  8.0f } },   // 10 dB
+        { "Singing Lead Sustain",                    {  0.0f,    400, 1100, 5,  4.0f, true,  false, false,  4.0f, 2.5f,  0, 12.0f } },   // 16 dB
+        { "Stacked British Mode (Zeppelin-style DI)",{ -3.0f,     20,   50, 7,  2.0f, true,  false, true,   0.0f, 7.0f,  0,  9.0f } },   // 12 dB (Comp 2)
+        { "Sustain for Days (Gilmour-style)",        {  4.0f,     50, 1100, 4,  4.0f, false, false, false,  0.0f, 0.5f,  0, 10.5f } },   // 14 dB
+        { "16th-Note Chop (Chic-style funk)",        {  5.5f,   7000,  100, 4,  3.0f, false, false, false,  0.0f, 0.0f,  0,  5.5f } },   // 10 dB
+        { "LA Studio Clean (80s session snap)",      {  4.5f,  40000,  175, 3,  0.0f, false, false, false,  0.0f, 0.0f,  0,  4.5f } },   // 8 dB
+        { "Wall-to-Wall Acoustic (modern pop)",      {  2.0f,  30000,  300, 1, 10.0f, false, true,  false,  0.0f, 0.0f, 20,  3.5f } },   // 6 dB
+        { "Front-End Anchor (djent tightener)",      {  4.0f,   1000,   65, 2,  4.0f, false, false, false,  0.0f, 0.0f,  0,  5.0f } },   // 8 dB
+    };
+}
+
+void Fusion250Processor::applyCompPreset (int index)
+{
+    if (! juce::isPositiveAndBelow (index, (int) compPresets.size())) return;
+    const auto& c = compPresets[(size_t) index].s;
+    const std::pair<const char*, float> values[] = {
+        { "comp_on", 1.0f }, { "comp_input", c.input }, { "comp_attack", c.attackUs }, { "comp_release", c.releaseMs },
+        { "comp_ratio", (float) c.ratioIdx }, { "comp_knee", c.knee }, { "comp_stacked", c.stacked ? 1.0f : 0.0f },
+        { "comp_auto_release", c.autoRelease ? 1.0f : 0.0f }, { "comp_line_drive", c.lineDrive ? 1.0f : 0.0f },
+        { "comp_thru", c.thru }, { "comp_drive", c.drive }, { "comp_dry", c.dry }, { "comp_output", c.output } };
+    for (auto& [id, val] : values)
+        if (auto* param = apvts.getParameter (id))
+            param->setValueNotifyingHost (param->convertTo0to1 (val));
+    currentCompPreset = index;
 }
 
 Fusion250Processor::~Fusion250Processor()
@@ -266,14 +290,19 @@ void Fusion250Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     p.pad6 = v (ID::pad) > 0.5f;
     p.inDb = v (ID::inTrim);
     {
-        static const float ratios[4] = { 4.0f, 8.0f, 12.0f, 20.0f };
+        static const float ratios[8] = { 2.0f, 3.0f, 4.0f, 6.0f, 8.0f, 12.0f, 20.0f, 20.0f };
         auto& c = p.comp;
+        const int r = juce::jlimit (0, 7, (int) v ("comp_ratio"));
         c.on = v ("comp_on") > 0.5f;
         c.stacked = v ("comp_stacked") > 0.5f;
+        c.lineDrive = v ("comp_line_drive") > 0.5f;
+        c.autoRelease = v ("comp_auto_release") > 0.5f;
+        c.allButtons = r == 7;
         c.inputDb = v ("comp_input");
         c.attackUs = v ("comp_attack");
         c.releaseMs = v ("comp_release");
-        c.ratio = ratios[juce::jlimit (0, 3, (int) v ("comp_ratio"))];
+        c.ratio = ratios[r];
+        c.kneeDb = v ("comp_knee");
         c.thruDb = v ("comp_thru");
         c.drive = v ("comp_drive") / 10.0f;
         c.dryMix = v ("comp_dry") / 100.0f;

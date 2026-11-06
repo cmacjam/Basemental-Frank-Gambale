@@ -99,6 +99,48 @@ int main()
     run (s, 0.3, o, i, g1, g2, d);
     check (d == 0.0, "off: bit-exact bypass", d, 0, "");
 
+    std::printf ("--- all-buttons (British) mode, hard knee, auto release, line drive, slow attack\n");
+    {
+        FetCompressor c; c.prepare (fs); c.allButtons = true;
+        const double outAt6 = -18 + c.gainComputer (-18), outAt12 = -12 + c.gainComputer (-12);
+        check (outAt12 < outAt6, "All: output falls as input rises past threshold", outAt12 - outAt6, -0.42, "dB");
+
+        FetCompressor h; h.prepare (fs); h.kneeDb = 0; h.ratio = 6;
+        check (h.gainComputer (-24.5) == 0.0 && std::fabs (h.gainComputer (-18) - (-5.0)) < 1e-9,
+               "hard knee 6:1: nothing below threshold, -5 dB at 6 dB over", h.gainComputer (-18), -5.0, "dB");
+
+        // auto release: a 30 ms spike recovers fast, 2 s of sustained compression recovers slowly
+        auto recoverMs = [&] (double burstSec)
+        {
+            FetCompressor a; a.prepare (fs); a.autoRelease = true; a.setAttackUs (100);
+            for (int i = 0; i < (int) (0.2 * fs); ++i) a.process (0.01);
+            for (int i = 0; i < (int) (burstSec * fs); ++i) a.process (0.5);
+            const double start = a.grDb; int n = 0;
+            while (a.grDb < 0.368 * start && n < (int) (5 * fs)) { a.process (0.01); ++n; }
+            return n / fs * 1000.0;
+        };
+        const double shortRec = recoverMs (0.03), longRec = recoverMs (2.0);
+        check (shortRec < 120, "auto release: short spike recovers fast", shortRec, 120, "ms");
+        check (longRec > 3 * shortRec, "auto release: sustained compression recovers slowly", longRec, 3 * shortRec, "ms");
+
+        // 10 ms attack (beyond the 1176's 800 us range, for slower studio settings)
+        FetCompressor s10; s10.prepare (fs); s10.setAttackUs (10000);
+        for (int i = 0; i < (int) (0.2 * fs); ++i) s10.process (0.01);
+        std::vector<double> g;
+        for (int i = 0; i < (int) fs; ++i) { s10.process (0.5); g.push_back (s10.grDb); }
+        int ia = 0; while (g[(size_t) ia] > 0.632 * g.back()) ++ia;
+        check (std::fabs (ia / fs * 1000 - 10) < 1.5, "attack 10 ms", ia / fs * 1000, 10, "ms");
+
+        // line drive: Comp 1 adds harmonics but never reduces gain
+        StackedFetComp::Settings ld; ld.on = true; ld.lineDrive = true; ld.stacked = false; ld.inputDb = 12; ld.drive = 0.7f;
+        StackedFetComp sc; sc.prepare (fs, ld);
+        std::vector<double> y;
+        for (int n = 0; n < (int) fs; ++n) { const double v = sc.process (0.3 * std::sin (2 * kPi * 1000.0 * n / fs)); if (n >= (int) fs - 4800) y.push_back (v); }
+        const double h1 = harmonic (y, fs, 1000, 1), h2 = harmonic (y, fs, 1000, 2), h3 = harmonic (y, fs, 1000, 3);
+        check (sc.gr1 == 0.0f, "line drive: Comp 1 does no gain reduction", sc.gr1, 0, "dB");
+        check (std::sqrt (h2 * h2 + h3 * h3) / h1 > 0.05, "line drive: overdriven preamp adds harmonics (THD)", std::sqrt (h2 * h2 + h3 * h3) / h1 * 100, 5, "%");
+    }
+
     std::printf ("--- Class-A drive\n");
     {
         double prevThd = -1;
