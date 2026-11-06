@@ -692,7 +692,7 @@ CompPanel::CompPanel (Fusion250Processor& p) : proc (p)
 {
     setOpaque (true);
     struct Def { const char* id; const char* label; double reset; };
-    const Def defs[] = { { "comp_input", "INPUT", 12.0 }, { "comp_attack", "ATTACK", 250.0 }, { "comp_release", "RELEASE", 250.0 },
+    const Def defs[] = { { "comp_input", "INPUT", 0.0 }, { "comp_attack", "ATTACK", 250.0 }, { "comp_release", "RELEASE", 250.0 },
                          { "comp_thru", "THRU", 0.0 }, { "comp_drive", "DRIVE", 0.0 }, { "comp_dry", "DRY", 0.0 }, { "comp_output", "OUTPUT", 0.0 } };
     for (auto& d : defs)
     {

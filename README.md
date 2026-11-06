@@ -24,7 +24,7 @@ In Logic: Audio FX slot > **Audio Units > Basemental > Basemental FG 250**.
 - Shared reverb with a stomp footswitch, rocker power switch with blue ON lamp
 - 8 built-in cabinets, 3 mic positions, or load your own cabinet IR
 - 12 guitar voicings (FG1/FG2, single-coil, humbucker, hollowbody...)
-- 9 presets including 8 Gambale-style tones
+- 18 presets: 8 Gambale-style tones and 9 compressor presets
 - Strobe tuner accurate to better than 0.1 cent: auto/manual note, transposing
   keys, cent offset, 8 historical temperaments, Gambale-tuning string guide
 - **FET Stack** compressor in front of the amp: two 1176-style FET compressors
@@ -118,7 +118,7 @@ guitar -> Input -> FET Comp 1 -> Thru -> FET Comp 2 -> Class-A Drive -> Output -
 | Control | What it does |
 |---|---|
 | ON | Footswitch; switching is click-free and Off is a bit-exact bypass |
-| Input | 0 to +36 dB into a fixed -24 dBFS threshold (1176-style: no threshold knob) |
+| Input | -24 to +24 dB into a fixed -24 dBFS threshold (1176-style: no threshold knob) |
 | Attack | 20 us to 800 us |
 | Release | 50 ms to 1100 ms |
 | Ratio | 4, 8, 12 or 20 : 1, 6 dB soft knee (both compressors) |
@@ -127,6 +127,21 @@ guitar -> Input -> FET Comp 1 -> Thru -> FET Comp 2 -> Class-A Drive -> Output -
 | Drive | Class-A style saturation: an off-centre tanh curve adds even (2nd) and odd (3rd) harmonics. Level-compensated, so Drive adds harmonics, not volume; no hard clipping at any setting |
 | Dry | 0-100% of the uncompressed signal blended back in (parallel compression) |
 | Output | -24 to +24 dB make-up |
+
+**Compressor presets** (each sets the amp too; Input and Output are
+loudness-matched, so switching the compressor on/off compares fairly):
+
+| Preset | Typical gain reduction | Idea |
+|---|---|---|
+| Gentle Always-On | 3 dB | Light leveling you leave on all the time |
+| Jazz Smooth Clean | 5 dB | Slow attack, long release, 30% dry: smooth, keeps dynamics |
+| Clean Arpeggio Shimmer | 6 dB | Even arpeggios with long release and a wetter reverb |
+| Country Snap | 8 dB | Slow attack lets the pick click through, fast release, 8:1 |
+| Funk Rhythm Squash | 12 dB | Fast attack, stacked 12:1 for flat, percussive rhythm |
+| Parallel Punch | 15 dB | 20:1 slammed and driven, half dry for punch with natural attack |
+| Sweep Picking Evener | 8 dB | Fast attack evens out note-to-note picking on the lead channel |
+| Fusion Legato Sustain | 10 dB | Stacked, smooth sustain for legato lines |
+| Singing Lead Sustain | 16 dB | Long release and drive for notes that hold |
 
 Meters show the gain reduction of each compressor. Everything is smoothed per
 sample, and nothing allocates memory on the audio thread.

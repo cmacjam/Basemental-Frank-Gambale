@@ -88,7 +88,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout Fusion250Processor::createLa
     p.push_back (std::make_unique<AudioParameterBool> (ParameterID { "comp_on", 1 }, "Comp On", false));
     p.push_back (std::make_unique<AudioParameterBool> (ParameterID { "comp_stacked", 1 }, "Comp Stacked", true));
     p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "comp_input", 1 }, "Comp Input",
-                 NormalisableRange<float> (0.0f, 36.0f, 0.1f), 12.0f, AudioParameterFloatAttributes().withLabel ("dB")));
+                 NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
     p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "comp_attack", 1 }, "Comp Attack",
                  skew (20.0f, 800.0f, 150.0f), 250.0f, AudioParameterFloatAttributes().withLabel ("us")));
     p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { "comp_release", 1 }, "Comp Release",
@@ -147,11 +147,22 @@ namespace
     using V = std::vector<std::pair<const char*, float>>;
     V chans (int ch, std::array<float, 5> c, std::array<float, 5> l, float rev, bool revOn = true)
     {
-        V v { { ID::chan, (float) ch }, { ID::reverb, rev }, { ID::revOn, revOn ? 1.0f : 0.0f } };
+        V v { { ID::chan, (float) ch }, { ID::reverb, rev }, { ID::revOn, revOn ? 1.0f : 0.0f }, { "comp_on", 0.0f } };
         for (int i = 0; i < 5; ++i) { v.push_back ({ ID::clean[i], c[(size_t) i] }); v.push_back ({ ID::lead[i], l[(size_t) i] }); }
         return v;
     }
     V withVoice (V v, int voice) { v.push_back ({ ID::guitar, (float) voice }); return v; }
+    // FET Stack settings: Input/Output were loudness-matched against the same preset
+    // with the compressor off, on a test performance with uneven picking.
+    struct CompSet { float input, attackUs, releaseMs; int ratioIdx; bool stacked; float thru, drive, dry, output; };
+    V withComp (V v, CompSet c)
+    {
+        V extra { { "comp_on", 1.0f }, { "comp_input", c.input }, { "comp_attack", c.attackUs }, { "comp_release", c.releaseMs },
+                  { "comp_ratio", (float) c.ratioIdx }, { "comp_stacked", c.stacked ? 1.0f : 0.0f }, { "comp_thru", c.thru },
+                  { "comp_drive", c.drive }, { "comp_dry", c.dry }, { "comp_output", c.output } };
+        v.insert (v.end(), extra.begin(), extra.end());
+        return v;
+    }
     const std::array<float, 5> glassyClean { 3.5f, 4.5f, 5.0f, 6.2f, 5.0f };
 }
 
@@ -173,6 +184,17 @@ Fusion250Processor::Fusion250Processor()
         { "Gambale - Singing Sustain",           chans (1, glassyClean,                      { 8.5f, 4.5f, 7.5f, 4.2f, 5.0f }, 3.5f) },
         { "Gambale - Fusion Crunch Rhythm",      chans (1, glassyClean,                      { 3.5f, 4.5f, 6.0f, 5.5f, 5.4f }, 1.5f) },
         { "Gambale - Ballad Lead (wet)",         chans (1, glassyClean,                      { 6.5f, 4.5f, 6.5f, 4.5f, 5.0f }, 5.5f) },
+        // ---- compressor presets (FET Stack on). Typical gain reduction in brackets.
+        //                                                                                                                           in   attack release ratio stack thru drive dry  out
+        { "Comp - Gentle Always-On (3 dB)",      withComp (chans (0, { 4.0f, 5.0f, 5.0f, 5.0f, 5.0f }, { 6.0f, 4.5f, 6.5f, 5.0f, 5.0f }, 2.5f), { -5.5f, 600,  300, 0, false,  0, 0.5f, 20, 7.0f }) },
+        { "Comp - Jazz Smooth Clean (5 dB)",     withComp (chans (0, { 4.5f, 5.0f, 5.5f, 4.0f, 5.0f }, { 5.5f, 4.0f, 6.5f, 5.0f, 5.0f }, 2.5f), { -3.5f, 800,  600, 0, false,  0, 0.8f, 30, 5.5f }) },
+        { "Comp - Clean Arpeggio Shimmer (6 dB)",withComp (chans (0, { 3.5f, 4.5f, 5.0f, 6.2f, 5.0f }, { 5.5f, 4.0f, 6.5f, 5.0f, 5.0f }, 4.5f), { -5.5f, 500,  800, 0, true,  -2, 0.0f, 25, 8.5f }) },
+        { "Comp - Country Snap (8 dB)",          withComp (chans (0, { 4.5f, 4.5f, 5.0f, 6.5f, 5.0f }, { 5.5f, 4.0f, 6.5f, 5.0f, 5.0f }, 1.5f), {  1.5f, 400,  150, 1, false,  0, 1.0f, 15, 6.5f }) },
+        { "Comp - Funk Rhythm Squash (12 dB)",   withComp (chans (0, { 4.0f, 4.0f, 5.5f, 6.0f, 5.0f }, { 5.5f, 4.0f, 6.5f, 5.0f, 5.0f }, 1.0f), {  1.5f,  30,  100, 2, true,   3, 0.5f,  0, 8.0f }) },
+        { "Comp - Parallel Punch (15 dB)",       withComp (chans (0, { 6.0f, 4.5f, 6.0f, 5.5f, 4.5f }, { 5.5f, 4.0f, 6.5f, 5.0f, 5.0f }, 1.5f), {  2.5f,  20,   50, 3, true,   6, 3.0f, 50, 3.0f }) },
+        { "Comp - Sweep Picking Evener (8 dB)",  withComp (chans (1, glassyClean,                      { 5.0f, 4.0f, 6.5f, 5.0f, 5.0f }, 2.0f), {  1.0f,  60,  120, 1, true,  -3, 0.5f,  0, 2.0f }) },
+        { "Comp - Fusion Legato Sustain (10 dB)",withComp (chans (1, glassyClean,                      { 6.5f, 4.5f, 7.0f, 4.2f, 5.0f }, 3.0f), { -0.5f, 250,  400, 0, true,   2, 1.5f, 10, 0.5f }) },
+        { "Comp - Singing Lead Sustain (16 dB)", withComp (chans (1, glassyClean,                      { 7.5f, 4.5f, 7.5f, 4.2f, 5.0f }, 3.5f), {  0.0f, 400, 1100, 2, true,   4, 2.5f,  0, 0.5f }) },
     };
 }
 
