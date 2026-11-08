@@ -15,8 +15,11 @@ Get the latest installers from the **[Releases page](../../releases/latest)**:
 | `BasementalFG250-1.3.0-Windows-Setup.exe` | Windows DAWs (VST3) and a standalone app |
 | `BasementalFG250-1.3.0-Linux.tar.gz` | Linux (VST3 + LV2): unpack and run `./install.sh` |
 | `BasementalFG250-REAPER.jsfx` | REAPER, no install needed (no tuner) |
+| `BasementalFG250-1.3.0-Manual.pdf` | User manual |
 
 In Logic: Audio FX slot > **Audio Units > Basemental > Basemental FG 250**.
+
+📖 **[User manual](docs/MANUAL.md)** (also as a PDF on the Releases page): install, quick start in Logic, every control, the FET Stack presets, the tuner and troubleshooting.
 
 ## Features
 

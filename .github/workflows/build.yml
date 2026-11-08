@@ -124,9 +124,9 @@ jobs:
           bash "dist/$P/install.sh" --uninstall
           rm -rf "dist/$P"
 
-      - name: Add REAPER JSFX and README
+      - name: Add REAPER JSFX, README and manual
         shell: bash
-        run: cp JSFX/Fusion250.jsfx README.md dist/
+        run: cp JSFX/Fusion250.jsfx README.md docs/BasementalFG250-Manual.pdf dist/
 
       - uses: actions/upload-artifact@v4
         with:
@@ -156,6 +156,7 @@ jobs:
           find artifacts -name '*-Windows-Setup.exe' -exec cp {} release/ \;
           find artifacts -name '*-Linux.tar.gz' -exec cp {} release/ \;
           cp "$(find artifacts -name 'Fusion250.jsfx' | head -1)" release/BasementalFG250-REAPER.jsfx
+          cp "$(find artifacts -name 'BasementalFG250-Manual.pdf' | head -1)" "release/BasementalFG250-${FUSION_VERSION}-Manual.pdf"
           ls -la release
       - uses: softprops/action-gh-release@v2
         with:
@@ -165,14 +166,31 @@ jobs:
           make_latest: true
           files: release/*
           body: |
-            **Basemental FG 250** two-channel fusion amp with strobe tuner.
+            **Basemental FG 250** two-channel fusion amp with a 0.1-cent strobe tuner and the FET Stack compressor.
+
+            📖 **New here? Download the manual:** `BasementalFG250-${{ env.FUSION_VERSION }}-Manual.pdf` (below), or read it online: [docs/MANUAL.md](https://github.com/${{ github.repository }}/blob/main/docs/MANUAL.md)
 
             | Download | For |
             |---|---|
-            | `BasementalFG250-*-macOS-Installer.pkg` | Logic Pro, GarageBand, MainStage (AU) and other Mac DAWs (VST3). Apple Silicon + Intel |
+            | `BasementalFG250-*-macOS-Installer.pkg` | **Logic Pro**, GarageBand, MainStage (AU) and other Mac DAWs (VST3). Apple Silicon + Intel |
             | `BasementalFG250-*-Windows-Setup.exe` | Windows DAWs (VST3) + standalone app |
             | `BasementalFG250-*-Linux.tar.gz` | Linux (VST3 + LV2), run `./install.sh` |
-            | `BasementalFG250-REAPER.jsfx` | REAPER, no install needed |
+            | `BasementalFG250-REAPER.jsfx` | REAPER, no install needed (no tuner or FET Stack) |
+            | `BasementalFG250-*-Manual.pdf` | User manual |
+
+            ### Install on a Mac (Logic Pro)
+            1. Quit Logic and double-click the `.pkg`.
+            2. If macOS says it can't verify the developer: **System Settings › Privacy & Security › Open Anyway**, then run it again.
+            3. Keep **Audio Unit** and **VST3** ticked and finish the installer.
+            4. Open Logic › Audio FX slot › **Audio Units › Basemental › Basemental FG 250**.
+               Not listed? **Logic Pro › Settings › Plug-in Manager › Reset & Rescan Selection**.
+
+            ### Install on Windows
+            Run the `Setup.exe` (SmartScreen: **More info › Run anyway**). The VST3 goes to `C:\Program Files\Common Files\VST3`.
+
+            ### What's new in ${{ env.FUSION_VERSION }}
+            - **FET Stack** compressor before the amp (click **COMP**): two FET compressors in series, Thru, Class-A Drive, Dry blend, Knee, Auto release, ALL (British) mode and Line Drive. When it's off, the guitar goes straight to the amp.
+            - **15 FET Stack presets** in the COMP panel: they change only the compressor, never the amp, and are loudness-matched.
+            - Defaults: Lead Gain 0.51, Guitar Voice Semi-Hollow.
 
             Every installer was installed and checked on its own operating system before release (`auval` for the Logic AU).
-            First time on macOS: if it can't verify the developer, open System Settings > Privacy & Security and click **Open Anyway**.
