@@ -107,6 +107,8 @@ jobs:
     needs: train
     if: always() && needs.render.result == 'success'
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -133,3 +135,17 @@ jobs:
         with:
           name: BasementalFG250-NAM-IR-Pack
           path: pack
+      # The models, IRs and reports (not the big sweep renders, ~25 MB each, which stay in
+      # the Actions artifact above) also go to the nam-ir-pack branch as a ready zip.
+      - name: Publish the pack to the nam-ir-pack branch
+        run: |
+          cd pack
+          zip -qr ../BasementalFG250-NAM-IR-Pack.zip BasementalFG250-NAM-IR-Pack -x '*/3 TONE3000 sweep uploads/*'
+          cd ..
+          mkdir br && cd br && git init -q -b nam-ir-pack
+          cp ../BasementalFG250-NAM-IR-Pack.zip .
+          cp -R "../pack/BasementalFG250-NAM-IR-Pack" . && rm -rf "BasementalFG250-NAM-IR-Pack/3 TONE3000 sweep uploads"
+          git add -A
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
+            commit -q -m "NAM + IR pack from run ${{ github.run_id }} [skip ci]"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" nam-ir-pack
