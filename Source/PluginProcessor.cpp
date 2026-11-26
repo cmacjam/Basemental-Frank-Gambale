@@ -119,6 +119,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout Fusion250Processor::createLa
     p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { ID::output, 1 }, "Output",
                  StringArray { "Pre Out (no cab)", "Built-in Cab", "User IR" }, 1));
     p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ID::pad, 1 }, "Pre Out -6 dB", false));
+    // NAM capture in place of the FG 250 channels (TONE3000 or a .nam file)
+    p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { "amp_source", 1 }, "Amp Source", StringArray { "FG 250", "NAM Capture" }, 0));
+    p.push_back (std::make_unique<AudioParameterChoice> (ParameterID { "nam_size", 1 }, "NAM Size", StringArray { "Full", "Lite" }, 0));
+    p.push_back (std::make_unique<AudioParameterBool> (ParameterID { "nam_normalize", 1 }, "NAM Normalize", true));
     p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ID::inTrim, 1 }, "Input Trim",
                  NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
     p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ID::outLvl, 1 }, "Master",
@@ -168,6 +172,8 @@ Fusion250Processor::Fusion250Processor()
       apvts (*this, nullptr, "STATE", createLayout()),
       convolution (juce::dsp::Convolution::Latency { 0 })
 {
+    amp.setExternalStages (&external);
+    apvts.addParameterListener ("nam_size", this);
     presets = {
         //                                      ch   clean: gain low  mid  high level      lead: gain low  mid  high level   reverb
         { "Init",                                withVoice (chans (0, { 4.0f, 5.0f, 5.0f, 5.0f, 5.0f }, { 0.51f, 4.5f, 6.5f, 5.0f, 5.0f }, 2.5f), 10) },
@@ -225,6 +231,56 @@ void Fusion250Processor::applyCompPreset (int index)
 Fusion250Processor::~Fusion250Processor()
 {
     if (tunerThread) tunerThread->stopThread (1000);
+    apvts.removeParameterListener ("nam_size", this);
+    cancelPendingUpdate();
+    amp.setExternalStages (nullptr);
+}
+
+void Fusion250Processor::parameterChanged (const juce::String&, float) { triggerAsyncUpdate(); }
+
+void Fusion250Processor::handleAsyncUpdate()
+{
+    external.setLite (apvts.getRawParameterValue ("nam_size")->load() > 0.5f);   // rebuilds off the audio thread
+}
+
+void Fusion250Processor::loadNamFile (const juce::File& file, ToneSource src, std::function<void (fusion::ExternalTone::NamInfo)> done)
+{
+    external.setLite (apvts.getRawParameterValue ("nam_size")->load() > 0.5f);
+    juce::WeakReference<Fusion250Processor> weak (this);
+    external.loadNam (file, [weak, src, done] (fusion::ExternalTone::NamInfo info)
+    {
+        if (auto* self = weak.get())
+            if (info.error.isEmpty())
+            {
+                self->namSource = src;
+                if (self->namSource.title.isEmpty()) self->namSource.title = info.name;
+                if (auto* prm = self->apvts.getParameter ("amp_source")) prm->setValueNotifyingHost (1.0f);
+            }
+        if (done) done (info);
+    });
+}
+
+void Fusion250Processor::clearNam()
+{
+    external.clearNam();
+    namSource = {};
+    if (auto* prm = apvts.getParameter ("amp_source")) prm->setValueNotifyingHost (0.0f);
+}
+
+bool Fusion250Processor::loadIrFile (const juce::File& file, ToneSource src)
+{
+    if (! loadImpulseResponse (file)) return false;
+    irSource = src;
+    if (irSource.title.isEmpty()) irSource.title = file.getFileNameWithoutExtension();
+    if (auto* prm = apvts.getParameter ("output")) prm->setValueNotifyingHost (prm->convertTo0to1 (2.0f));
+    return true;
+}
+
+void Fusion250Processor::clearImpulseResponse()
+{
+    irFile = juce::File();
+    irSource = {};
+    if (auto* prm = apvts.getParameter ("output")) prm->setValueNotifyingHost (prm->convertTo0to1 (1.0f));
 }
 
 bool Fusion250Processor::isBusesLayoutSupported (const BusesLayout& l) const
@@ -239,6 +295,7 @@ void Fusion250Processor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     currentSampleRate.store (sampleRate);
     amp.prepare (sampleRate);
+    external.prepare (sampleRate, samplesPerBlock);
     convolution.prepare ({ sampleRate, (juce::uint32) samplesPerBlock, 2 });
     monoIn.setSize (1, samplesPerBlock);
     stereoTmp.setSize (2, samplesPerBlock);
@@ -267,6 +324,10 @@ fusion::TunerResult Fusion250Processor::getTunerResult() const
     return tunerResult;
 }
 
+// JUCE normalises an IR to 0.125 energy; the built-in Fusion 1x12 has 0.414 at 48 kHz.
+// +10.4 dB makes any IR play at the built-in cabinet's level (an FG 250 IR matches exactly).
+static const float kIrTrim = juce::Decibels::decibelsToGain (10.4f);
+
 void Fusion250Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -285,7 +346,7 @@ void Fusion250Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     p.cabinet = (int) v (ID::cabinet);
     p.mic = (int) v (ID::mic);
     const int outputMode = (int) v (ID::output);
-    const bool useIr = outputMode == 2 && convolution.getCurrentIRSize() > 0;
+    const bool useIr = outputMode == 2 && irFile != juce::File() && convolution.getCurrentIRSize() > 0;
     p.output = outputMode == 0 ? 0 : (useIr ? 2 : 1);   // no IR loaded -> built-in cab
     p.pad6 = v (ID::pad) > 0.5f;
     p.inDb = v (ID::inTrim);
@@ -310,6 +371,8 @@ void Fusion250Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     }
     p.outDb = v (ID::outLvl);
     amp.setParams (p);
+    external.setAmpWanted (v ("amp_source") > 0.5f);
+    external.setNormalise (v ("nam_normalize") > 0.5f);
 
     // sum input to mono (guitar is a mono source)
     auto* m = monoIn.getWritePointer (0);
@@ -340,6 +403,7 @@ void Fusion250Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         {
             juce::dsp::AudioBlock<float> block (buffer.getArrayOfWritePointers(), 2, (size_t) n);
             convolution.process (juce::dsp::ProcessContextReplacing<float> (block));
+            block.multiplyBy (kIrTrim);
         }
         for (int c = 2; c < numOut; ++c) buffer.clear (c, 0, n);
     }
@@ -352,6 +416,7 @@ void Fusion250Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         {
             juce::dsp::AudioBlock<float> block (tmp);
             convolution.process (juce::dsp::ProcessContextReplacing<float> (block));
+            block.multiplyBy (kIrTrim);
         }
         auto* o = buffer.getWritePointer (0);
         for (int i = 0; i < n; ++i) o[i] = 0.5f * (tmp.getSample (0, i) + tmp.getSample (1, i));
@@ -406,6 +471,16 @@ void Fusion250Processor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
     state.setProperty ("irPath", irFile.getFullPathName(), nullptr);
+    auto saveSrc = [&state] (const char* k, const ToneSource& t)
+    {
+        state.setProperty (juce::String (k) + "Title", t.title, nullptr);
+        state.setProperty (juce::String (k) + "Creator", t.creator, nullptr);
+        state.setProperty (juce::String (k) + "Url", t.url, nullptr);
+        state.setProperty (juce::String (k) + "ToneId", t.toneId, nullptr);
+    };
+    state.setProperty ("namPath", external.namFile().getFullPathName(), nullptr);
+    saveSrc ("nam", namSource);
+    saveSrc ("ir", irSource);
     state.setProperty ("preset", currentPreset, nullptr);
     if (auto xml = state.createXml()) copyXmlToBinary (*xml, destData);
 }
@@ -418,8 +493,25 @@ void Fusion250Processor::setStateInformation (const void* data, int sizeInBytes)
             auto state = juce::ValueTree::fromXml (*xml);
             const juce::String ir = state.getProperty ("irPath").toString();
             currentPreset = (int) state.getProperty ("preset", 0);
+            const juce::String nam = state.getProperty ("namPath").toString();
+            auto loadSrc = [&state] (const char* k)
+            {
+                ToneSource t;
+                t.title = state.getProperty (juce::String (k) + "Title").toString();
+                t.creator = state.getProperty (juce::String (k) + "Creator").toString();
+                t.url = state.getProperty (juce::String (k) + "Url").toString();
+                t.toneId = (int) state.getProperty (juce::String (k) + "ToneId", 0);
+                return t;
+            };
             apvts.replaceState (state);
-            if (ir.isNotEmpty()) loadImpulseResponse (juce::File (ir));
+            if (ir.isNotEmpty() && loadImpulseResponse (juce::File (ir))) irSource = loadSrc ("ir");
+            if (nam.isNotEmpty())
+            {
+                namSource = loadSrc ("nam");
+                external.setLite (apvts.getRawParameterValue ("nam_size")->load() > 0.5f);
+                external.loadNam (juce::File (nam));
+            }
+            else external.clearNam();
         }
 }
 

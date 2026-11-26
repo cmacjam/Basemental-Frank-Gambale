@@ -673,6 +673,7 @@ public:
         voice.setup (fs, p.guitar); voice.reset();
         comp.prepare (fs, p.comp);
         xfade.prepare (fs, 15); wet.prepare (fs, 30); outG.prepare (fs, 20); inG.prepare (fs, 20);
+        ampSel.prepare (fs, 12); cabSel.prepare (fs, 12); ampSel.snap (0); cabSel.snap (0);
         first = true;
         setParams (p);
     }
@@ -702,29 +703,99 @@ public:
     // mono in, stereo out (stereo comes only from the reverb tails)
     void process (const float* in, float* outL, float* outR, int n)
     {
+        for (int off = 0; off < n; off += kChunk)
+            processChunk (in + off, outL + off, outR + off, std::min (kChunk, n - off));
+    }
+
+    // Optional replacements for the amp and the cabinet (NAM capture, IR file), supplied
+    // by the plug-in. AmpCore stays free of JUCE/NAM; these are called on the audio thread.
+    struct ExternalStages
+    {
+        virtual ~ExternalStages() = default;
+        virtual bool ampLoaded() = 0;                       // a model is ready to run
+        virtual bool ampWanted() = 0;                       // the user picked it as the amp
+        virtual void processAmp (float* x, int n) = 0;      // mono, in place
+        virtual bool cabLoaded() = 0;
+        virtual bool cabWanted() = 0;
+        virtual void processCab (float* L, float* R, int n) = 0;
+    };
+    void setExternalStages (ExternalStages* e) { ext = e; }
+
+private:
+    static constexpr int kChunk = 256;
+
+    void processChunk (const float* in, float* outL, float* outR, int n)
+    {
+        const bool namReady = ext != nullptr && ext->ampLoaded();
+        const bool irReady  = ext != nullptr && ext->cabLoaded();
+        ampSel.target = (namReady && ext->ampWanted()) ? 1.0 : 0.0;
+        cabSel.target = (irReady && ext->cabWanted()) ? 1.0 : 0.0;
+        if (! namReady) ampSel.snap (0.0);
+        if (! irReady)  cabSel.snap (0.0);
+        const bool runNam     = namReady && (ampSel.target > 0.5 || ampSel.cur > 1.0e-4);
+        const bool runBuiltIn = ! (ampSel.target > 0.5 && ampSel.cur > 0.9999);
+
+        // 1. input trim, guitar voice, FET Stack
+        for (int s = 0; s < n; ++s)
+            xb[s] = (float) comp.process (voice.process (in[s] * inG.next()));   // pedal in front of the amp
+
+        // 2. the amp: FG 250 channels and/or the NAM capture
+        if (runNam) { std::copy (xb, xb + n, nb); ext->processAmp (nb, n); }
+
         for (int s = 0; s < n; ++s)
         {
-            const double x = comp.process (voice.process (in[s] * inG.next()));   // pedal in front of the amp
-            const double mix = xfade.next();
+            const double x = xb[s];
+            const double a = ampSel.next();
             double m = 0;
-            if (mix < 0.9999) m += clean.process (x) * (1.0 - mix); else clean.process (x);
-            if (mix > 0.0001) m += lead.process (x) * mix;           else lead.process (x);
+            if (runBuiltIn)
+            {
+                const double mix = xfade.next();
+                if (mix < 0.9999) m += clean.process (x) * (1.0 - mix); else clean.process (x);
+                if (mix > 0.0001) m += lead.process (x) * mix;           else lead.process (x);
+            }
+            const double mb = m;
+            if (runNam) m = mb * (1.0 - a) + nb[s] * a;
 
             const double w = wet.next();
             double L = m + revL.process ((float) m) * w;
             double R = m + revR.process ((float) m) * w;
 
             if (p.output != 0)            // MPT Class-D: clean, soft limit near rail
-            {
-                L = softSat (L * 0.8) / 0.8;
-                R = softSat (R * 0.8) / 0.8;
-                if (p.output == 1) { L = cab[0].process (L); R = cab[1].process (R); }
+            {                             // (a NAM capture already has its own power stage)
+                const double sl = softSat (L * 0.8) / 0.8, sr = softSat (R * 0.8) / 0.8;
+                L = sl + (L - sl) * a;
+                R = sr + (R - sr) * a;
             }
+            outL[s] = (float) L; outR[s] = (float) R;
+        }
+
+        // 3. the cabinet (Output = Power + speaker only): FG 250 cab and/or the IR
+        if (p.output == 1)
+        {
+            const bool runIr = irReady && (cabSel.target > 0.5 || cabSel.cur > 1.0e-4);
+            const bool runCab = ! (cabSel.target > 0.5 && cabSel.cur > 0.9999);
+            if (runIr) { std::copy (outL, outL + n, irL); std::copy (outR, outR + n, irR); ext->processCab (irL, irR, n); }
+            for (int s = 0; s < n; ++s)
+            {
+                const double c = cabSel.next();
+                double L = runCab ? cab[0].process (outL[s]) : 0.0;
+                double R = runCab ? cab[1].process (outR[s]) : 0.0;
+                if (runIr) { L += (irL[s] - L) * c; R += (irR[s] - R) * c; }
+                outL[s] = (float) L; outR[s] = (float) R;
+            }
+        }
+
+        for (int s = 0; s < n; ++s)
+        {
             const double g = outG.next();
-            outL[s] = (float) (L * g);
-            outR[s] = (float) (R * g);
+            outL[s] = (float) (outL[s] * g);
+            outR[s] = (float) (outR[s] * g);
         }
     }
+
+    ExternalStages* ext = nullptr;
+    Smoother ampSel, cabSel;
+    float xb[kChunk], nb[kChunk], irL[kChunk], irR[kChunk];
 
 private:
     double fs = 48000;

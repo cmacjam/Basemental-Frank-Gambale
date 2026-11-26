@@ -2,6 +2,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
 #include "TunerPanel.h"
+#include "T3KPanel.h"
 
 // Vintage boutique look: brushed-brass faceplate in an oxblood tolex frame,
 // black bakelite chicken-head knobs, engraved serif lettering, jewel lamps.
@@ -99,6 +100,8 @@ private:
     FootswitchButton reverbBtn;
     CompPanel compPanel;
     juce::TextButton compBtn { "COMP" };
+    T3KPanel t3kPanel;
+    juce::TextButton t3kBtn { "TONE3000" };
     TunerPanel tuner;
     RockerSwitch powerBtn;
     LevelMeter inMeter { "IN" }, outMeter { "OUT" };

@@ -3,8 +3,12 @@
 #include <juce_dsp/juce_dsp.h>
 #include "AmpCore.h"
 #include "StrobeTuner.h"
+#include "ExternalTone.h"
+#include "T3K/Client.h"
 
-class Fusion250Processor : public juce::AudioProcessor
+class Fusion250Processor : public juce::AudioProcessor,
+                           private juce::AudioProcessorValueTreeState::Listener,
+                           private juce::AsyncUpdater
 {
 public:
     Fusion250Processor();
@@ -36,6 +40,17 @@ public:
 
     bool loadImpulseResponse (const juce::File& file);
     juce::String getIrName() const { return irFile.existsAsFile() ? irFile.getFileNameWithoutExtension() : juce::String(); }
+    void clearImpulseResponse();
+
+    // ---- NAM captures + TONE3000 -------------------------------------------
+    /// Where a loaded file came from (TONE3000 tone, or a file on disk), for the panel.
+    struct ToneSource { juce::String title, creator, url; int toneId = 0; };
+    void loadNamFile (const juce::File& file, ToneSource src, std::function<void (fusion::ExternalTone::NamInfo)> done = {});
+    void clearNam();
+    bool loadIrFile (const juce::File& file, ToneSource src);
+    fusion::ExternalTone& externalTone() { return external; }
+    ToneSource namSource, irSource;      // message thread only
+    t3k::Client& tone3000() { return *t3kClient; }
 
     // ---- tuner (driven by the editor) -----------------------------------
     void setTunerOpen (bool open);
@@ -59,7 +74,12 @@ private:
     class TunerThread;
     friend class TunerThread;
 
+    void parameterChanged (const juce::String& id, float value) override;
+    void handleAsyncUpdate() override;
+
     fusion::AmpCore amp;
+    fusion::ExternalTone external;
+    juce::SharedResourcePointer<t3k::Client> t3kClient;   // one TONE3000 session for every instance
     juce::dsp::Convolution convolution;
     juce::File irFile;
     juce::AudioBuffer<float> monoIn, stereoTmp;
@@ -108,5 +128,6 @@ private:
     mutable juce::SpinLock tunerLock;
     fusion::TunerResult tunerResult;
 
+    JUCE_DECLARE_WEAK_REFERENCEABLE (Fusion250Processor)
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Fusion250Processor)
 };

@@ -211,7 +211,45 @@ strings; move or turn slightly to reduce the hum.
 
 ---
 
-## 6. Troubleshooting
+## 6. TONE3000 and NAM captures
+
+Click **TONE3000** (top bar) to open the panel. It lets the FG 250 run any
+**NAM capture** (Neural Amp Modeler) in place of its own amp, and any
+**impulse response** in place of its cabinet. Everything else stays: guitar
+voice, FET Stack, reverb, tuner, meters and Master.
+
+![TONE3000 panel](tone3000.png)
+
+| Control | What it does |
+|---|---|
+| **AMP: FG 250 / NAM CAPTURE** | Which amp you hear. NAM CAPTURE bypasses the Clean/Lead knobs. Switching crossfades, no clicks. |
+| **BROWSE TONE3000** | Opens tone3000.com in your browser. Sign in, pick a tone, and it downloads and loads here. If a tone has several captures, a menu asks which. |
+| **LOAD .NAM** | Load a `.nam` file from your computer (for example the FG 250 NAM pack). |
+| **CLEAR** | Unload, back to the FG 250 amp or cabinet. |
+| **LITE** | A2 captures hold two sizes. Lite uses much less CPU with a little less detail. |
+| **NORMALIZE** | Brings every capture to the same loudness (NAM's -18 dB standard). Turn off to hear a capture's own level. |
+| **CABINET: FG 250 CAB / IR** | Built-in cabinet, or the loaded IR (same as Output › User IR). |
+| **BROWSE TONE3000 / LOAD IR** | Pick a cabinet IR on TONE3000, or load a `.wav` file. |
+| **CONNECT / DISCONNECT** | Your TONE3000 account. You stay signed in until you disconnect. |
+
+**Good to know**
+
+- Amp-head captures need a cabinet: keep **Built-in Cab** or load an IR.
+  When you load a **full-rig** capture (amp + cab), the plug-in switches the
+  cabinet off for you (Output › Pre Out).
+- The plug-in remembers the loaded capture and IR with your Logic project.
+  Downloads are kept in *Application Support › Basemental › FG 250 › TONE3000*
+  (Mac) or *AppData › Roaming › Basemental › FG 250 › TONE3000* (Windows).
+- Captures made at 48 kHz are resampled automatically when your project runs at
+  another rate.
+- The FG 250's own captures (the NAM pack on the download page) sound the same
+  as the built-in amp, so you can compare them with other captures directly.
+- **BROWSE TONE3000** needs the build's TONE3000 key. Without one the Browse
+  buttons are greyed out, but **LOAD .NAM** and **LOAD IR** still work.
+
+---
+
+## 7. Troubleshooting
 
 | Problem | Fix |
 |---|---|
@@ -223,18 +261,22 @@ strings; move or turn slightly to reduce the hum.
 | Compressor does nothing | Turn up FET Stack **INPUT**; check the ON light. |
 | Compressor too strong | Lower FET Stack **INPUT**, raise **DRY**, or try *Gentle Always-On*. |
 | Tuner jumps between notes | Mute the other strings and pluck firmly; use **MANUAL** for harmonics. |
+| BROWSE TONE3000 is greyed out | This build has no TONE3000 key. Use **LOAD .NAM** / **LOAD IR**, or download a newer build. |
+| Browser opened but nothing loaded | Finish picking a tone on tone3000.com and wait for "you can close this tab". Then return to the plug-in. |
+| NAM capture uses too much CPU | Turn on **LITE**, or raise Logic's buffer size. |
 | Latency when playing live | Lower Logic's I/O buffer size (**Settings › Audio**). The plug-in adds no latency of its own. |
 
 ---
 
-## 7. Specifications
+## 8. Specifications
 
 - Formats: AU (macOS), VST3 (macOS, Windows, Linux), LV2 (Linux), Standalone,
   REAPER JSFX; AAX can be built with Avid's SDK
 - Mono or stereo input, stereo output (the reverb is stereo)
-- Sample rates: 44.1–192 kHz; zero added latency
+- Sample rates: 44.1–192 kHz; zero added latency (about 1.5 ms with a NAM capture when the project rate differs from the capture's)
 - Internal 4× oversampling on the saturation stages
 - Tuner: strobe (phase-tracking) measurement, better than 0.1 cent
+- NAM: runs A1 and A2 captures (Full and Lite), any sample rate; IRs up to 10 s
 - Source code: <https://github.com/cmacjam/Basemental-Frank-Gambale>
 
 *Basemental FG 250 is an independent project. DV Mark, Kiesel and the other

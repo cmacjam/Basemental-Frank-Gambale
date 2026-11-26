@@ -33,6 +33,10 @@ In Logic: Audio FX slot > **Audio Units > Basemental > Basemental FG 250**.
   keys, cent offset, 8 historical temperaments, Gambale-tuning string guide
 - **FET Stack** compressor in front of the amp: two 1176-style FET compressors
   in series with Thru, Class-A drive and a parallel Dry blend (**COMP** button)
+- **TONE3000 + NAM** (**TONE3000** button): run any NAM amp capture in place of
+  the FG 250 channels and any IR in place of the cabinet. Browse tone3000.com
+  from the plug-in, or load `.nam` / `.wav` files. A2 Full/Lite, loudness
+  normalize, automatic resampling
 - Analogue VU meters for input and output, with peak lights
 - Formats: AU, VST3, LV2, Standalone, REAPER JSFX (AAX with Avid's SDK)
 
@@ -245,9 +249,35 @@ so the first time:
   click **Open Anyway** next to the Basemental FG 250 message, then run it again.
 - **Windows:** if SmartScreen appears, click **More info > Run anyway**.
 
+## TONE3000 and NAM
+
+The **TONE3000** panel runs [Neural Amp Modeler](https://github.com/sdatkinson/NeuralAmpModelerCore)
+captures (A1 and A2, Full or Lite) in place of the FG 250 channels, and IRs in place of the cabinet.
+**Browse TONE3000** uses the [TONE3000 API](https://github.com/tone-3000/api): the plug-in opens
+tone3000.com in your browser, you sign in and pick a tone, and it downloads and loads in the plug-in.
+
+![TONE3000 panel](docs/tone3000.png)
+
+**The TONE3000 key.** Browse needs a TONE3000 *publishable* key (`t3k_pub_...`). It's safe to ship in
+the plug-in. Without one, the Browse buttons are disabled and Load .nam / Load IR still work.
+1. Sign in at tone3000.com, open **Settings › API Keys** and create a key.
+2. In this repository: **Settings › Secrets and variables › Actions › Variables › New repository variable**,
+   name `T3K_PUBLISHABLE_KEY`, value your `t3k_pub_...` key. CI builds pick it up from then on.
+3. For local builds: `cmake ... -DT3K_PUBLISHABLE_KEY=t3k_pub_...`
+
+Never put the `t3k_cs_...` secret key in the plug-in or the repository.
+
+**Terms.** The TONE3000 API is free for non-commercial products. A paid product (or one that comes with
+a paid product) needs a commercial agreement with TONE3000, and they review integrations before launch.
+See the Commercial Terms and Design Requirements at <https://www.tone3000.com/api>.
+
+Credits: TONE3000 API client from [tone-3000/api](https://github.com/tone-3000/api) (MIT, in `Source/T3K`),
+NAM engine from [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) (MIT),
+Eigen (MPL2).
+
 ## Building locally
 
-Requires CMake 3.22+ and a C++17 compiler (Xcode on Mac, Visual Studio 2022 on
+Requires CMake 3.22+ and a C++20 compiler (Xcode on Mac, Visual Studio 2022 on
 Windows, GCC/Clang on Linux). JUCE is downloaded automatically.
 
 ```
@@ -258,7 +288,7 @@ cmake --build build --config Release
 Output goes to `build/Fusion250_artefacts/Release/`.
 
 - Mac universal binary: add `-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"`
-- Linux packages: `libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev libfreetype6-dev libfontconfig1-dev`
+- Linux packages: `libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev libfreetype6-dev libfontconfig1-dev libcurl4-openssl-dev`
 - **Pro Tools (AAX):** download the AAX SDK from Avid's developer portal and add
   `-DAAX_SDK_PATH=/path/to/aax-sdk`. Running AAX in a retail Pro Tools also
   requires PACE/iLok signing (free for developers via Avid).

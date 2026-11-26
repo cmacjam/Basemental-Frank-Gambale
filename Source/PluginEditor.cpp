@@ -178,7 +178,7 @@ juce::Slider& Fusion250Editor::makeKnob (const char* paramId, const juce::String
     return *knobs.back().slider;
 }
 
-Fusion250Editor::Fusion250Editor (Fusion250Processor& p) : AudioProcessorEditor (&p), proc (p), compPanel (p), tuner (p)
+Fusion250Editor::Fusion250Editor (Fusion250Processor& p) : AudioProcessorEditor (&p), proc (p), compPanel (p), t3kPanel (p), tuner (p)
 {
     setLookAndFeel (&lnf);
     const char* names[5] = { "Gain", "Low", "Mid", "High", "Level" };
@@ -231,7 +231,11 @@ Fusion250Editor::Fusion250Editor (Fusion250Processor& p) : AudioProcessorEditor 
     tunerBtn.setTooltip ("Strobe tuner (0.1 cent display)");
     tunerBtn.onClick = [this]
     {
-        if (tunerBtn.getToggleState()) { compBtn.setToggleState (false, juce::dontSendNotification); compPanel.setVisible (false); }
+        if (tunerBtn.getToggleState())
+        {
+            compBtn.setToggleState (false, juce::dontSendNotification); compPanel.setVisible (false);
+            t3kBtn.setToggleState (false, juce::dontSendNotification); t3kPanel.setVisible (false);
+        }
         tuner.setVisible (tunerBtn.getToggleState());
         tuner.toFront (false);   // cover the power switch and footswitch
     };
@@ -240,10 +244,29 @@ Fusion250Editor::Fusion250Editor (Fusion250Processor& p) : AudioProcessorEditor 
     compBtn.setTooltip ("FET Stack: two FET compressors in series + Class-A drive, in front of the amp");
     compBtn.onClick = [this]
     {
-        if (compBtn.getToggleState()) { tunerBtn.setToggleState (false, juce::dontSendNotification); tuner.setVisible (false); }
+        if (compBtn.getToggleState())
+        {
+            tunerBtn.setToggleState (false, juce::dontSendNotification); tuner.setVisible (false);
+            t3kBtn.setToggleState (false, juce::dontSendNotification); t3kPanel.setVisible (false);
+        }
         compPanel.setVisible (compBtn.getToggleState());
         compPanel.toFront (false);
     };
+    // TONE3000 / NAM panel (one overlay at a time)
+    t3kBtn.setClickingTogglesState (true);
+    t3kBtn.setTooltip ("TONE3000: load NAM amp captures and cabinet IRs (from tone3000.com or from files)");
+    t3kBtn.onClick = [this]
+    {
+        if (t3kBtn.getToggleState())
+        {
+            tunerBtn.setToggleState (false, juce::dontSendNotification); tuner.setVisible (false);
+            compBtn.setToggleState (false, juce::dontSendNotification); compPanel.setVisible (false);
+        }
+        t3kPanel.setVisible (t3kBtn.getToggleState());
+        t3kPanel.toFront (false);
+    };
+    addAndMakeVisible (t3kBtn);
+    addChildComponent (t3kPanel);
     addAndMakeVisible (compBtn);
     addChildComponent (compPanel);
     addAndMakeVisible (tunerBtn);
@@ -471,8 +494,10 @@ void Fusion250Editor::resized()
     presetBox.setBounds (getWidth() - S (300), S (12), S (280), S (28));
     tunerBtn.setBounds (getWidth() - S (400), S (12), S (86), S (28));
     compBtn.setBounds (getWidth() - S (494), S (12), S (86), S (28));
+    t3kBtn.setBounds (getWidth() - S (590), S (12), S (90), S (28));
     tuner.setBounds (plate);
     compPanel.setBounds (plate);
+    t3kPanel.setBounds (plate);
     channelBtn.setBounds (S (30), cleanBand.getY() - S (17), S (90), S (34));
 
     const int x0 = S (136), colW = S (115), knobSize = S (114);

@@ -6,7 +6,9 @@ on:
   workflow_dispatch:
 
 env:
-  FUSION_VERSION: "1.3.0"
+  FUSION_VERSION: "1.4.0"
+  # TONE3000 publishable key (t3k_pub_...): repo Settings > Secrets and variables > Actions > Variables
+  T3K_PUBLISHABLE_KEY: ${{ vars.T3K_PUBLISHABLE_KEY }}
 
 jobs:
   build:
@@ -35,7 +37,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build libasound2-dev libjack-jackd2-dev \
             libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev \
-            libfreetype6-dev libfontconfig1-dev libgl1-mesa-dev xvfb
+            libfreetype6-dev libfontconfig1-dev libgl1-mesa-dev libcurl4-openssl-dev xvfb
 
       - name: Configure
         shell: bash
@@ -190,8 +192,9 @@ jobs:
             Run the `Setup.exe` (SmartScreen: **More info › Run anyway**). The VST3 goes to `C:\Program Files\Common Files\VST3`.
 
             ### What's new in ${{ env.FUSION_VERSION }}
-            - **FET Stack** compressor before the amp (click **COMP**): two FET compressors in series, Thru, Class-A Drive, Dry blend, Knee, Auto release, ALL (British) mode and Line Drive. When it's off, the guitar goes straight to the amp.
-            - **15 FET Stack presets** in the COMP panel: they change only the compressor, never the amp, and are loudness-matched.
-            - Defaults: Lead Gain 0.51, Guitar Voice Semi-Hollow.
+            - **TONE3000 + NAM** (click **TONE3000**): run any NAM amp capture in place of the FG 250 channels, and any IR in place of the cabinet. Pick tones on tone3000.com with **Browse TONE3000**, or load `.nam` / `.wav` files from disk.
+            - A2 captures run in **Full** or **Lite** size; **Normalize** brings every capture to the same loudness.
+            - The FET Stack, guitar voices, reverb, tuner and meters all work with NAM captures.
+            - User IRs now play at the same level as the built-in cabinet.
 
             Every installer was installed and checked on its own operating system before release (`auval` for the Logic AU).
