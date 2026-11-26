@@ -26,3 +26,18 @@ jobs:
           cp pack/BasementalFG250-NAM-IR-Pack.zip "BasementalFG250-$V-NAM-IR-Pack.zip"
           gh release upload "v$V" "BasementalFG250-$V-NAM-IR-Pack.zip" --clobber -R "${{ github.repository }}"
           gh release view "v$V" -R "${{ github.repository }}" --json assets --jq '.assets[].name'
+      - name: Add the pack to the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(grep -m1 'FUSION_VERSION:' .github/workflows/build.yml | sed 's/.*"\(.*\)".*/\1/')
+          gh release view "v$V" -R "${{ github.repository }}" --json body --jq .body > notes.md
+          if ! grep -q "NAM-IR-Pack" notes.md; then
+            cat >> notes.md <<EOF
+
+          ### NAM + IR pack (TONE3000 / LAVA STUDIO)
+          **BasementalFG250-$V-NAM-IR-Pack.zip** – 10 NAM A2 amp captures + 48 cabinet IRs for TONE3000 and LAVA STUDIO (see the README inside the zip).
+          EOF
+            gh release edit "v$V" -R "${{ github.repository }}" --notes-file notes.md
+          fi
+          tail -4 notes.md
