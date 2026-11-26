@@ -1,0 +1,135 @@
+name: NAM captures + IRs (TONE3000 / LAVA STUDIO)
+
+# Renders the FG 250 amp presets through NAM's standard v3 sweep, trains each one into a
+# NAM A2 model (Full + Lite in one file, the size LAVA STUDIO runs), and exports the
+# built-in cabinets as IR files. Run it from the Actions tab, or push a commit whose
+# message contains [nam] (full training) or [nam-quick] (3-epoch smoke test).
+on:
+  workflow_dispatch:
+    inputs:
+      epochs:
+        description: "Training epochs per capture"
+        default: "100"
+      max_minutes:
+        description: "Stop training after this many minutes (best model so far is kept)"
+        default: "300"
+  push:
+    branches: [main]
+
+env:
+  NAM_COMMIT: c3eadd2ede0998bd6c45d0e6e0576207cf5a7474
+  V3_SWEEP_ID: 1Pgf8PdE0rKB1TD4TRPKbpNo1ByR3IOm9   # NAM's official v3_0_0.wav (Google Drive)
+
+jobs:
+  render:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.message, '[nam]') ||
+      contains(github.event.head_commit.message, '[nam-quick]')
+    runs-on: ubuntu-22.04
+    outputs:
+      epochs: ${{ steps.cfg.outputs.epochs }}
+      minutes: ${{ steps.cfg.outputs.minutes }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: cfg
+        env:
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          E="${{ github.event.inputs.epochs }}"; M="${{ github.event.inputs.max_minutes }}"
+          [ -z "$E" ] && E=100; [ -z "$M" ] && M=300
+          case "$MSG" in *"[nam-quick]"*) E=3; M=30;; esac
+          echo "epochs=$E" >> "$GITHUB_OUTPUT"; echo "minutes=$M" >> "$GITHUB_OUTPUT"
+      - name: Build the exporter
+        run: g++ -O2 -std=c++17 -ISource tools/nam_export.cpp -o nam_export
+      - name: Get NAM's v3 input sweep
+        run: |
+          python3 -m pip install --quiet gdown
+          gdown "$V3_SWEEP_ID" -O v3_0_0.wav
+          python3 -c "import wave;w=wave.open('v3_0_0.wav');print(w.getframerate(),w.getnchannels(),w.getsampwidth()*8,w.getnframes()/w.getframerate(),'s')"
+      - name: Render captures and IRs
+        run: |
+          mkdir -p out/reamp out/ir/48 out/ir/44
+          ./nam_export capture v3_0_0.wav out/reamp
+          ./nam_export irs out/ir
+          cp v3_0_0.wav out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reamps
+          path: out
+
+  train:
+    needs: render
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { file: FG250_Clean_Init,            tone: clean }
+          - { file: FG250_Clean_Glassy,          tone: clean }
+          - { file: FG250_Clean_Jazz_Neck,       tone: clean }
+          - { file: FG250_Clean_Edge_of_Breakup, tone: crunch }
+          - { file: FG250_Lead_Init,             tone: crunch }
+          - { file: FG250_Lead_Fusion_Crunch,    tone: crunch }
+          - { file: FG250_Lead_Sweep,            tone: overdrive }
+          - { file: FG250_Lead_Ballad,           tone: overdrive }
+          - { file: FG250_Lead_Fat_Round_Neck,   tone: overdrive }
+          - { file: FG250_Lead_Singing_Sustain,  tone: overdrive }
+    name: train ${{ matrix.file }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: reamps, path: out }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install NAM trainer (CPU)
+        run: |
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet "git+https://github.com/sdatkinson/neural-amp-modeler@$NAM_COMMIT"
+      - name: Train A2
+        env:
+          MPLBACKEND: Agg
+        run: |
+          NAME=$(g++ -O2 -std=c++17 -ISource tools/nam_export.cpp -o nam_export && ./nam_export list | awk -F'\t' '$1=="${{ matrix.file }}"{print $2}')
+          cp out/v3_0_0.wav input.wav
+          timeout -s INT ${{ needs.render.outputs.minutes }}m \
+            python3 tools/train_nam.py input.wav "out/reamp/${{ matrix.file }}.wav" "$NAME" ${{ matrix.tone }} \
+              ${{ needs.render.outputs.epochs }} models || [ $? -eq 124 ]
+          ls -la models
+          test -f "models/${{ matrix.file }}.nam"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nam-${{ matrix.file }}
+          path: models
+
+  pack:
+    needs: train
+    if: always() && needs.render.result == 'success'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: a }
+      - name: Assemble the pack
+        run: |
+          P="pack/BasementalFG250-NAM-IR-Pack"
+          mkdir -p "$P/1 NAM models (A2)" "$P/2 IRs/48 kHz" "$P/2 IRs/44.1 kHz" "$P/3 TONE3000 sweep uploads" "$P/Training reports"
+          find a -name '*.nam' -exec cp {} "$P/1 NAM models (A2)/" \;
+          find a -path '*nam-*' -name '*.png' -exec cp {} "$P/Training reports/" \;
+          python3 - "$P" <<'EOF'
+          import json, glob, sys, pathlib
+          rows = [json.load(open(f)) for f in sorted(glob.glob("a/nam-*/*.json"))]
+          txt = "\n".join(f"{r['file']:40s} ESR {r['validation_esr']:.5f}  ({r['minutes']} min)" for r in rows)
+          pathlib.Path(sys.argv[1], "Training reports", "accuracy.txt").write_text(txt + "\n")
+          print(txt)
+          EOF
+          cp a/reamps/ir/48/*.wav "$P/2 IRs/48 kHz/"
+          cp a/reamps/ir/44/*.wav "$P/2 IRs/44.1 kHz/"
+          cp a/reamps/reamp/*.wav "$P/3 TONE3000 sweep uploads/"
+          cp tools/NAM-IR-README.txt "$P/README.txt"
+          ls -R pack | head -100
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BasementalFG250-NAM-IR-Pack
+          path: pack
