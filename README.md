@@ -16,6 +16,7 @@ Get the latest installers from the **[Releases page](../../releases/latest)**:
 | `BasementalFG250-1.3.0-Linux.tar.gz` | Linux (VST3 + LV2): unpack and run `./install.sh` |
 | `BasementalFG250-REAPER.jsfx` | REAPER, no install needed (no tuner) |
 | `BasementalFG250-1.3.0-Manual.pdf` | User manual |
+| `BasementalFG250-1.3.0-NAM-IR-Pack.zip` | NAM A2 amp captures + cabinet IRs for TONE3000, LAVA STUDIO and other NAM loaders |
 
 In Logic: Audio FX slot > **Audio Units > Basemental > Basemental FG 250**.
 

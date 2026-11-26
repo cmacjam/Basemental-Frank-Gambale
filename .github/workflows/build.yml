@@ -177,6 +177,7 @@ jobs:
             | `BasementalFG250-*-Linux.tar.gz` | Linux (VST3 + LV2), run `./install.sh` |
             | `BasementalFG250-REAPER.jsfx` | REAPER, no install needed (no tuner or FET Stack) |
             | `BasementalFG250-*-Manual.pdf` | User manual |
+            | `BasementalFG250-*-NAM-IR-Pack.zip` | NAM A2 amp captures + cabinet IRs (TONE3000 / LAVA STUDIO), attached by the NAM workflow |
 
             ### Install on a Mac (Logic Pro)
             1. Quit Logic and double-click the `.pkg`.
