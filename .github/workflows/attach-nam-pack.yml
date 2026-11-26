@@ -1,0 +1,28 @@
+name: Attach NAM + IR pack to the release
+
+# Copies the zip from the nam-ir-pack branch onto the current release
+# (v<FUSION_VERSION> in build.yml). Run from the Actions tab, or push a commit whose
+# message contains [nam-release].
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  attach:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[nam-release]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { ref: nam-ir-pack, path: pack }
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(grep -m1 'FUSION_VERSION:' .github/workflows/build.yml | sed 's/.*"\(.*\)".*/\1/')
+          cp pack/BasementalFG250-NAM-IR-Pack.zip "BasementalFG250-$V-NAM-IR-Pack.zip"
+          gh release upload "v$V" "BasementalFG250-$V-NAM-IR-Pack.zip" --clobber -R "${{ github.repository }}"
+          gh release view "v$V" -R "${{ github.repository }}" --json assets --jq '.assets[].name'
