@@ -1,6 +1,6 @@
 # Basemental FG 250: User Manual
 
-**Version 1.3.0** · two-channel fusion guitar amp plug-in with strobe tuner and FET Stack compressor
+**Version 1.4.0** · two-channel fusion guitar amp plug-in with strobe tuner, FET Stack compressor and TONE3000 / NAM
 
 ![Basemental FG 250](faceplate@2x.png)
 
@@ -14,7 +14,7 @@ Download the installer for your computer from the
 ### Mac (Logic Pro, GarageBand, MainStage, Ableton, Cubase…)
 
 1. Quit your DAW.
-2. Double-click **BasementalFG250-1.3.0-macOS-Installer.pkg**.
+2. Double-click **BasementalFG250-1.4.0-macOS-Installer.pkg**.
 3. If macOS says it can't verify the developer: click **Done**, open
    **System Settings › Privacy & Security**, scroll down, click **Open Anyway**
    next to the Basemental message, then run the installer again.
@@ -26,14 +26,14 @@ Works on Apple Silicon and Intel Macs. Files go to
 
 ### Windows
 
-1. Run **BasementalFG250-1.3.0-Windows-Setup.exe**.
+1. Run **BasementalFG250-1.4.0-Windows-Setup.exe**.
 2. If SmartScreen appears, click **More info › Run anyway**.
 3. The VST3 goes to `C:\Program Files\Common Files\VST3`; a standalone app
    is added to the Start menu. Uninstall from **Settings › Apps**.
 
 ### Linux
 
-Unpack **BasementalFG250-1.3.0-Linux.tar.gz** and run `./install.sh`
+Unpack **BasementalFG250-1.4.0-Linux.tar.gz** and run `./install.sh`
 (VST3 to `~/.vst3`, LV2 to `~/.lv2`). `./install.sh --uninstall` removes it.
 
 ### REAPER (no install)

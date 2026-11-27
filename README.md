@@ -11,12 +11,12 @@ Get the latest installers from the **[Releases page](../../releases/latest)**:
 
 | File | For |
 |---|---|
-| `BasementalFG250-1.3.0-macOS-Installer.pkg` | **Logic Pro**, GarageBand, MainStage (AU) and other Mac DAWs (VST3). Apple Silicon + Intel |
-| `BasementalFG250-1.3.0-Windows-Setup.exe` | Windows DAWs (VST3) and a standalone app |
-| `BasementalFG250-1.3.0-Linux.tar.gz` | Linux (VST3 + LV2): unpack and run `./install.sh` |
+| `BasementalFG250-1.4.0-macOS-Installer.pkg` | **Logic Pro**, GarageBand, MainStage (AU) and other Mac DAWs (VST3). Apple Silicon + Intel |
+| `BasementalFG250-1.4.0-Windows-Setup.exe` | Windows DAWs (VST3) and a standalone app |
+| `BasementalFG250-1.4.0-Linux.tar.gz` | Linux (VST3 + LV2): unpack and run `./install.sh` |
 | `BasementalFG250-REAPER.jsfx` | REAPER, no install needed (no tuner) |
-| `BasementalFG250-1.3.0-Manual.pdf` | User manual |
-| `BasementalFG250-1.3.0-NAM-IR-Pack.zip` | NAM A2 amp captures + cabinet IRs for TONE3000, LAVA STUDIO and other NAM loaders |
+| `BasementalFG250-1.4.0-Manual.pdf` | User manual |
+| `BasementalFG250-1.4.0-NAM-IR-Pack.zip` | NAM A2 amp captures + cabinet IRs for TONE3000, LAVA STUDIO and other NAM loaders |
 
 In Logic: Audio FX slot > **Audio Units > Basemental > Basemental FG 250**.
 
@@ -238,9 +238,9 @@ the Actions tab) publishes them, as `v<version>`, on the
 
 | | File | Installs |
 |---|---|---|
-| macOS | `BasementalFG250-1.3.0-macOS-Installer.pkg` | AU to `/Library/Audio/Plug-Ins/Components`, VST3 to `/Library/Audio/Plug-Ins/VST3` (universal: Apple Silicon + Intel) |
-| Windows | `BasementalFG250-1.3.0-Windows-Setup.exe` | VST3 to `C:\Program Files\Common Files\VST3`, standalone app; uninstaller in Settings > Apps |
-| Linux | `BasementalFG250-1.3.0-Linux.tar.gz` | `./install.sh` to `~/.vst3` and `~/.lv2` (`--system`, `--uninstall`) |
+| macOS | `BasementalFG250-1.4.0-macOS-Installer.pkg` | AU to `/Library/Audio/Plug-Ins/Components`, VST3 to `/Library/Audio/Plug-Ins/VST3` (universal: Apple Silicon + Intel) |
+| Windows | `BasementalFG250-1.4.0-Windows-Setup.exe` | VST3 to `C:\Program Files\Common Files\VST3`, standalone app; uninstaller in Settings > Apps |
+| Linux | `BasementalFG250-1.4.0-Linux.tar.gz` | `./install.sh` to `~/.vst3` and `~/.lv2` (`--system`, `--uninstall`) |
 
 The installers aren't signed with a paid Apple/Microsoft developer certificate,
 so the first time:
