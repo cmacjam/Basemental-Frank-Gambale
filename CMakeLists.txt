@@ -52,8 +52,15 @@ if(APPLE)
 endif()
 
 # ---- TONE3000 (your publishable key: -DT3K_PUBLISHABLE_KEY=t3k_pub_... or the env var) --
-if(NOT DEFINED T3K_PUBLISHABLE_KEY AND DEFINED ENV{T3K_PUBLISHABLE_KEY})
-    set(T3K_PUBLISHABLE_KEY "$ENV{T3K_PUBLISHABLE_KEY}")
+# Basemental's publishable key (account cmacjam). Publishable keys are made to ship inside
+# apps (it's the OAuth client_id); the t3k_cs_ secret key must never be in this repo.
+set(T3K_DEFAULT_KEY "t3k_pub_2Q5KygGCnsbheO1gPqzlkzzAeE8uQkEC")
+if(NOT DEFINED T3K_PUBLISHABLE_KEY)
+    if(NOT "$ENV{T3K_PUBLISHABLE_KEY}" STREQUAL "")
+        set(T3K_PUBLISHABLE_KEY "$ENV{T3K_PUBLISHABLE_KEY}")
+    else()
+        set(T3K_PUBLISHABLE_KEY "${T3K_DEFAULT_KEY}")
+    endif()
 endif()
 set(T3K_PUBLISHABLE_KEY "${T3K_PUBLISHABLE_KEY}" CACHE STRING "TONE3000 publishable key (t3k_pub_...); empty = browse disabled")
 set(T3K_API_DOMAIN "https://www.tone3000.com" CACHE STRING "TONE3000 API origin")

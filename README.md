@@ -258,12 +258,11 @@ tone3000.com in your browser, you sign in and pick a tone, and it downloads and 
 
 ![TONE3000 panel](docs/tone3000.png)
 
-**The TONE3000 key.** Browse needs a TONE3000 *publishable* key (`t3k_pub_...`). It's safe to ship in
-the plug-in. Without one, the Browse buttons are disabled and Load .nam / Load IR still work.
-1. Sign in at tone3000.com, open **Settings › API Keys** and create a key.
-2. In this repository: **Settings › Secrets and variables › Actions › Variables › New repository variable**,
-   name `T3K_PUBLISHABLE_KEY`, value your `t3k_pub_...` key. CI builds pick it up from then on.
-3. For local builds: `cmake ... -DT3K_PUBLISHABLE_KEY=t3k_pub_...`
+**The TONE3000 key.** Browse uses Basemental's TONE3000 *publishable* key (`t3k_pub_...`, set in
+`CMakeLists.txt`). Publishable keys are meant to ship inside apps. To use a different one, set the
+`T3K_PUBLISHABLE_KEY` repository variable (Settings › Secrets and variables › Actions › Variables) or
+pass `-DT3K_PUBLISHABLE_KEY=t3k_pub_...` to CMake. With an empty key, Browse is disabled and
+Load .nam / Load IR still work.
 
 Never put the `t3k_cs_...` secret key in the plug-in or the repository.
 
